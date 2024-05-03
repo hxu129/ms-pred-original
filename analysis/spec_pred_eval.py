@@ -52,8 +52,8 @@ def get_args():
 
 def process_spec_file(spec_name, num_bins: int, upper_limit: int, spec_dir: Path):
     """process_spec_file."""
-    spec_file = spec_dir / f"{spec_name}.json"
-    loaded_json = json.load(open(spec_file, "r"))
+    spec_h5 = common.HDF5Dataset(spec_dir)
+    loaded_json = json.loads(spec_h5.read_str(f"{spec_name}.json"))
 
     if loaded_json.get("output_tbl") is None:
         return None
@@ -74,7 +74,7 @@ def main(args):
     """main."""
     dataset = args.dataset
     formula_dir_name = args.formula_dir_name
-    data_folder = Path(f"data/spec_datasets/{dataset}/subformulae/{formula_dir_name}/")
+    data_folder = Path(f"data/spec_datasets/{dataset}/subformulae/{formula_dir_name}")
     min_inten = args.min_inten
     max_peaks = args.max_peaks
 

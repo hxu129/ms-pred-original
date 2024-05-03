@@ -17,13 +17,13 @@ python data_scripts/forms/03_add_form_intens.py \
 
 
 # NIST20 (commercial dataset)
-python data_scripts/forms/01_assign_subformulae.py --data-dir data/spec_datasets/nist20/ --labels-file data/spec_datasets/nist20/labels.tsv --use-magma --mass-diff-thresh $ppm_diff --output-dir magma_subform_50
-python data_scripts/forms/01_assign_subformulae.py --data-dir data/spec_datasets/nist20/ --labels-file data/spec_datasets/nist20/labels.tsv --use-all --output-dir no_subform
+python data_scripts/forms/01_assign_subformulae.py --data-dir data/spec_datasets/nist20/ --labels-file data/spec_datasets/nist20/labels.tsv --use-all --output-dir no_subform.hdf5 --num-workers $workers
+python data_scripts/forms/01_assign_subformulae.py --data-dir data/spec_datasets/nist20/ --labels-file data/spec_datasets/nist20/labels.tsv --use-magma --mass-diff-thresh $ppm_diff --output-dir magma_subform_50.hdf5 --num-workers $workers
 
 python data_scripts/forms/03_add_form_intens.py \
     --num-workers $workers \
-    --pred-form-folder data/spec_datasets/nist20/subformulae/magma_subform_50/ \
-    --true-form-folder data/spec_datasets/nist20/subformulae/no_subform/ \
+    --pred-form-folder data/spec_datasets/nist20/subformulae/magma_subform_50.hdf5 \
+    --true-form-folder data/spec_datasets/nist20/subformulae/no_subform.hdf5 \
     --add-raw \
     --binned-add \
-    --out-form-folder data/spec_datasets/nist20/subformulae/magma_subform_50_with_raw
+    --out-form-folder data/spec_datasets/nist20/subformulae/magma_subform_50_with_raw.hdf5

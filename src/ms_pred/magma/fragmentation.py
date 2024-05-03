@@ -61,6 +61,9 @@ class FragmentEngine(object):
         else:
             raise NotImplementedError()
 
+        if self.mol is None:
+            raise RuntimeError(f"Invalid molecule encountered. SMILES: {self.smiles}, InChI: {self.inchi}")
+
         self.natoms = self.mol.GetNumAtoms()
 
         # Kekulize the molecule

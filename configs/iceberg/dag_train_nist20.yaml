@@ -35,6 +35,7 @@ universal_args:
   inject-early: [False]
   encode-forms: [True]
   embed-adduct: [True]
+  embed-collision: [True]
   add-hs: [true]
 
 iterative_args:
@@ -49,6 +50,6 @@ iterative_args:
   -  split-name: [split_1.tsv]
      save-dir: [split_1_rnd3]
      seed: [3]
-  
+
   -  split-name: [scaffold_1.tsv]
      save-dir: [scaffold_1]

@@ -6,6 +6,8 @@ Make both dag and intensity predictions jointly and revert to binned
 
 import logging
 import json
+import ast
+from tqdm import tqdm
 from collections import defaultdict
 from datetime import datetime
 import yaml
@@ -36,6 +38,7 @@ def get_args():
     parser.add_argument("--sparse-out", default=False, action="store_true")
     parser.add_argument("--sparse-k", default=100, action="store", type=int)
     parser.add_argument("--binned-out", default=False, action="store_true")
+    parser.add_argument('--adduct-shift',default=False, action="store_true")
     parser.add_argument("--num-workers", default=0, action="store", type=int)
     parser.add_argument("--batch-size", default=64, action="store", type=int)
     date = datetime.now().strftime("%Y_%m_%d")
@@ -63,6 +66,7 @@ def get_args():
         action="store",
         choices=["none", "train_only", "test_only", "debug_special"],
     )
+
     return parser.parse_args()
 
 
@@ -88,7 +92,7 @@ def predict():
         dataset_name = kwargs["dataset_name"]
         data_dir = Path("data/spec_datasets") / dataset_name
 
-    labels = data_dir / kwargs["dataset_labels"]
+    labels = Path(kwargs["dataset_labels"])
 
     # Get train, val, test inds
     df = pd.read_csv(labels, sep="\t")
@@ -119,10 +123,8 @@ def predict():
     gen_checkpoint = kwargs["gen_checkpoint"]
     inten_checkpoint = kwargs["inten_checkpoint"]
 
-    torch.set_num_threads(1)
-
-    inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint)
-    gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint)
+    inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint, strict=False)
+    gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint, strict=False)
 
     # Build joint model class
 
@@ -146,70 +148,114 @@ def predict():
 
         binned_out = kwargs["binned_out"]
 
+        def single_predict_mol_wrapper(entry):
+            try:
+                out = single_predict_mol(entry)
+            except RuntimeError as err:
+                print(f"Error occurred when predicting {entry['smiles']}, returning empty output\n"
+                      f"Error message:\n {err}")
+                out = {}
+            return out
+
         def single_predict_mol(entry):
             torch.set_num_threads(1)
             smi = entry["smiles"]
             adduct = entry["ionization"]
-            full_output = model.predict_mol(
-                smi,
-                adduct=adduct,
-                threshold=kwargs["threshold"],
-                device=device,
-                max_nodes=kwargs["max_nodes"],
-                binned_out=binned_out,
-            )
-            if binned_out:
-                # Get only index
-                output_spec = full_output["spec"][0]
-                best_inds = None
+            precursor_mz = entry["precursor"]
+            collision_energies = [i for i in ast.literal_eval(entry["collision_energies"])]
+            out_dict = {}
+            for colli_eng in collision_energies:
+                full_output = model.predict_mol(
+                    smi,
+                    precursor_mz=precursor_mz,
+                    collision_eng=float(colli_eng.split()[0]),
+                    adduct=adduct,
+                    threshold=kwargs["threshold"],
+                    device=device,
+                    max_nodes=kwargs["max_nodes"],
+                    binned_out=binned_out,
+                    adduct_shift=kwargs["adduct_shift"]
+                )
+                if binned_out:
+                    # Get only index
+                    output_spec = full_output["spec"][0]
+                    best_inds = None
 
-                if kwargs["sparse_out"]:
-                    sparse_k = kwargs["sparse_k"]
-                    best_inds = np.argsort(output_spec, -1)[::-1][:sparse_k]
-                    best_intens = np.take_along_axis(output_spec, best_inds, -1)
-                    output_spec = np.stack([best_inds, best_intens], -1)
-
-                update_dict = {}
-                for param_k, param_v in full_output.items():
-                    if param_k in ["spec", "forms", "masses"]:
-                        continue
-
-                    # Shrink it to only top k, ordering inds, intens
                     if kwargs["sparse_out"]:
-                        best_params = np.take_along_axis(param_v, best_inds, -1)
-                        param_v = np.stack([best_inds, best_params], -1)
+                        sparse_k = kwargs["sparse_k"]
+                        best_inds = np.argsort(output_spec, -1)[::-1][:sparse_k]
+                        best_intens = np.take_along_axis(output_spec, best_inds, -1)
+                        output_spec = np.stack([best_inds, best_intens], -1)
 
-                    update_dict[param_k] = param_v
+                    update_dict = {}
+                    for param_k, param_v in full_output.items():
+                        if param_k in ["spec", "forms", "masses"]:
+                            continue
 
-                out = {"preds": output_spec}
-                out.update(update_dict)
-            else:
-                out = full_output
-            return out
+                        # Shrink it to only top k, ordering inds, intens
+                        if kwargs["sparse_out"]:
+                            best_params = np.take_along_axis(param_v, best_inds, -1)
+                            param_v = np.stack([best_inds, best_params], -1)
+
+                        update_dict[param_k] = param_v
+
+                    out = {"preds": output_spec}
+                    out.update(update_dict)
+                else:
+                    output_spec = full_output
+                    assert kwargs["sparse_out"], 'sparse_out must be True for non-binned output'
+                    sparse_k = kwargs["sparse_k"]
+                    best_inds = np.argsort(output_spec[:, 1], -1)[::-1][:sparse_k]
+                    output_spec = output_spec[best_inds, :]
+                    out = {"preds": output_spec}
+
+                out_dict[colli_eng] = out
+
+            # switch from {colli: {key: spec}} to {key: {colli: spec}}
+            new_out_dict = {}
+            for out in out_dict.values():
+                all_keys = out.keys()
+                break
+            for key in all_keys:
+                new_out_dict[key] = {ce: out_dict[ce][key] for ce in out_dict.keys()}
+
+            new_out_dict['collision_energies'] = collision_energies
+
+            return new_out_dict
 
         all_rows = [j for _, j in df.iterrows()]
         preds = []
         if kwargs["debug"]:
-            for j in all_rows:
-                pred = single_predict_mol(j)
+            for j in tqdm(all_rows[:10]):
+                pred = single_predict_mol_wrapper(j)
                 preds.append(pred)
         else:
             preds = common.chunked_parallel(
-                all_rows, single_predict_mol, max_cpu=kwargs["batch_size"]
+                all_rows, single_predict_mol_wrapper, chunks=1000, max_cpu=kwargs["num_workers"]
             )
 
+        # discard empty dicts (RuntimeError entries)
+        new_preds = []
+        new_all_rows = []
+        for pred, row in zip(preds, all_rows):
+            if len(pred) != 0:
+                new_preds.append(pred)
+                new_all_rows.append(row)
+        preds = new_preds
+        all_rows = new_all_rows
+
         # Export out
+        output_keys = set(preds[0].keys())
+        update_dict = {}
+        for k in output_keys:
+            update_dict[k] = [i[k] for i in preds]
+        #     update_dict[k] = np.stack(temp, 0)
+
+        spec_names_ar = [i["spec"] for i in all_rows]
+        smiles_ar = np.array([i["smiles"] for i in all_rows])
+        inchikeys = [common.inchikey_from_smiles(i) for i in smiles_ar]
+
         if binned_out:
-            output_keys = set(preds[0].keys())
-            update_dict = {}
-            for k in output_keys:
-                temp = [i[k] for i in preds]
-                update_dict[k] = np.stack(temp, 0)
-
-            spec_names_ar = [i["spec"] for i in all_rows]
-            smiles_ar = np.array([i["smiles"] for i in all_rows])
-            inchikeys = [common.inchikey_from_smiles(i) for i in smiles_ar]
-
             output = {
                 "smiles": smiles_ar,
                 "ikeys": inchikeys,
@@ -218,22 +264,32 @@ def predict():
                 "upper_limit": 1500,
                 "sparse_out": kwargs["sparse_out"],
             }
-            output.update(update_dict)
-
-            out_file = Path(kwargs["save_dir"]) / "binned_preds.p"
-            with open(out_file, "wb") as fp:
-                pickle.dump(output, fp)
+            out_name = "binned_preds.p"
         else:
-            for pred_obj, row in zip(preds, all_rows):
-                spec_name = row["spec"]
-                ionization = row["ionization"]
-                pred_obj["name"] = spec_name
-                pred_obj["adduct"] = ionization
-                save_path = Path(kwargs["save_dir"]) / "tree_preds_inten"
-                save_path.mkdir(exist_ok=True)
-                out_file = save_path / f"pred_{spec_name}.json"
-                with open(out_file, "w") as fp:
-                    json.dump(pred_obj, fp, indent=2)
+            output = {
+                "smiles": smiles_ar,
+                "ikeys": inchikeys,
+                "spec_names": spec_names_ar,
+                "sparse_out": kwargs["sparse_out"],
+            }
+            out_name = "preds.p"
+        output.update(update_dict)
+
+        out_file = Path(kwargs["save_dir"]) / out_name
+        with open(out_file, "wb") as fp:
+            pickle.dump(output, fp)
+        # else:
+        #     save_path = Path(kwargs["save_dir"]) / "tree_preds_inten.hdf5"
+        #     save_path.parent.mkdir(exist_ok=True)
+        #     save_h5 = common.HDF5Dataset(save_path, "w")
+        #     for pred_obj, row in zip(preds, all_rows):
+        #         spec_name = row["spec"]
+        #         ionization = row["ionization"]
+        #         pred_obj["name"] = spec_name
+        #         pred_obj["adduct"] = ionization
+        #         out_name = f"pred_{spec_name}.json"
+        #         save_h5.write_str(out_name, json.dumps(pred_obj, indent=2))
+        #     save_h5.close()
 
 
 if __name__ == "__main__":

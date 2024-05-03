@@ -60,11 +60,14 @@ class JointModel(pl.LightningModule):
     def predict_mol(
         self,
         smi: str,
+        collision_eng: float,
+        precursor_mz: float,
         adduct: str,
         threshold: float,
         device: str,
         max_nodes: int,
         binned_out: bool = False,
+        adduct_shift: bool = False,
     ):
         """predict_mol.
 
@@ -87,12 +90,14 @@ class JointModel(pl.LightningModule):
 
         frag_tree = self.gen_model_obj.predict_mol(
             root_smi=root_smi,
+            collision_eng=collision_eng,
+            precursor_mz=precursor_mz,
             adduct=adduct,
             threshold=threshold,
             device=device,
             max_nodes=max_nodes,
         )
-        frag_tree = {"root_inchi": root_inchi, "name": "", "frags": frag_tree}
+        frag_tree = {"root_inchi": root_inchi, "name": "", "collision_energy": collision_eng, "frags": frag_tree}
 
         # Get engine from fragmentation for this inchi
         engine = fragmentation.FragmentEngine(mol_str=root_inchi, mol_str_type="inchi")
@@ -105,6 +110,7 @@ class JointModel(pl.LightningModule):
 
         processed_tree["adduct"] = common.ion2onehot_pos[adduct]
         processed_tree["name"] = ""
+        processed_tree["precursor"] = precursor_mz
         batch = self.inten_collate_fn([processed_tree])
         inten_frag_ids = batch["inten_frag_ids"]
 
@@ -118,8 +124,12 @@ class JointModel(pl.LightningModule):
         max_remove_hs = safe_device(batch["max_remove_hs"])
         max_add_hs = safe_device(batch["max_add_hs"])
         masses = safe_device(batch["masses"])
+        if adduct_shift:
+            masses += common.ion2mass[adduct]
 
         adducts = safe_device(batch["adducts"]).to(device)
+        collision_engs = safe_device(batch["collision_engs"]).to(device)
+        precursor_mzs = safe_device(batch["precursor_mzs"]).to(device)
         root_forms = safe_device(batch["root_form_vecs"])
         frag_forms = safe_device(batch["frag_form_vecs"])
 
@@ -137,26 +147,30 @@ class JointModel(pl.LightningModule):
             frag_forms=frag_forms,
             binned_out=binned_out,
             adducts=adducts,
+            collision_engs=collision_engs,
+            precursor_mzs=precursor_mzs,
         )
 
         if binned_out:
             out = inten_preds
         else:
             inten_preds = inten_preds["spec"][0]
-            inten_frag_ids = inten_frag_ids[0]
-            out_frags = out_tree["frags"]
+            out = np.stack((masses.reshape(-1), inten_preds.reshape(-1)), axis=1)
 
-            # Get masses too
-            for inten_pred, inten_frag_id in zip(inten_preds, inten_frag_ids):
-                out_frags[inten_frag_id]["intens"] = inten_pred.tolist()
-
-                new_masses = (
-                    out_frags[inten_frag_id]["base_mass"] + engine.shift_bucket_masses
-                )
-                mz_with_charge = new_masses + common.ion2mass[adduct]
-                out_frags[inten_frag_id]["mz_no_charge"] = new_masses.tolist()
-                out_frags[inten_frag_id]["mz_charge"] = mz_with_charge.tolist()
-
-            out_tree["frags"] = out_frags
-            out = out_tree
+            # inten_frag_ids = inten_frag_ids[0]
+            # out_frags = out_tree["frags"]
+            #
+            # # Get masses too
+            # for inten_pred, inten_frag_id in zip(inten_preds, inten_frag_ids):
+            #     out_frags[inten_frag_id]["intens"] = inten_pred.tolist()
+            #
+            #     new_masses = (
+            #         out_frags[inten_frag_id]["base_mass"] + engine.shift_bucket_masses
+            #     )
+            #     mz_with_charge = new_masses + common.ion2mass[adduct]
+            #     out_frags[inten_frag_id]["mz_no_charge"] = new_masses.tolist()
+            #     out_frags[inten_frag_id]["mz_charge"] = mz_with_charge.tolist()
+            #
+            # out_tree["frags"] = out_frags
+            # out = out_tree
         return out

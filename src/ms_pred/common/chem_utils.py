@@ -66,6 +66,9 @@ ELEMENT_TO_MASS = dict(zip(VALID_ELEMENTS, CHEM_MASSES.squeeze()))
 ELEMENT_DIM_MASS = len(ELEMENT_VECTORS_MASS[0])
 ELEMENT_DIM = len(ELEMENT_VECTORS[0])
 
+COLLISION_PE_DIM = 64
+COLLISION_PE_SCALAR = 10000
+
 # Reasonable normalization vector for elements
 # Estimated by max counts (+ 1 when zero)
 NORM_VEC_MASS = np.array(
@@ -91,6 +94,7 @@ element_to_position_mass = dict(zip(VALID_ELEMENTS, ELEMENT_VECTORS_MASS))
 
 # Map ion to adduct mass, don't use electron
 ion2mass = {
+    # positive mode
     "[M+H]+": ELEMENT_TO_MASS["H"] - ELECTRON_MASS,
     "[M+Na]+": ELEMENT_TO_MASS["Na"] - ELECTRON_MASS,
     "[M+K]+": ELEMENT_TO_MASS["K"] - ELECTRON_MASS,
@@ -101,7 +105,26 @@ ion2mass = {
     "[M]+": 0 - ELECTRON_MASS,
     "[M-H4O2+H]+": -ELEMENT_TO_MASS["O"] * 2 - ELEMENT_TO_MASS["H"] * 3 - ELECTRON_MASS,
     "[M+H-2H2O]+": -ELEMENT_TO_MASS["O"] * 2 - ELEMENT_TO_MASS["H"] * 3 - ELECTRON_MASS,
+    # negative mode
+    "[M-H]-": -ELEMENT_TO_MASS["H"] + ELECTRON_MASS,
+    "[M+Cl]-": ELEMENT_TO_MASS["Cl"] + ELECTRON_MASS,
+    "[M-H2O-H]-": -ELEMENT_TO_MASS["O"] - ELEMENT_TO_MASS["H"] * 3 + ELECTRON_MASS,
+    "[M-H-H2O]-": -ELEMENT_TO_MASS["O"] - ELEMENT_TO_MASS["H"] * 3 + ELECTRON_MASS,
+    "[M-H-CO2]-": -ELEMENT_TO_MASS["C"] - ELEMENT_TO_MASS["O"] * 2 - ELEMENT_TO_MASS["H"] + ELECTRON_MASS,
 }
+    # More high probability adducts:
+    #    '[M+H-NH3]+', '[M-H+2Na]+', '[M+CHO2]-', '[M+HCOOH-H]-', '[M+CH3COOH-H]-', '[M+CH3OH-H]-'
+    #    '[M-H+2i]-', '[M+H-CH2O2]+', '[M+H-C2H4O2]+', '[M+H-C4H8]+',
+    #    '[M-2H]2-', '[M+H-3H2O]+', '[M+H-CH4O]+', '[M+H-C2H4]+',
+    #    '[M+2Na-H]+', '[M+H-H2O+2i]+', '[M+H-C2H2O]+', '[M-H-CH3]-',
+    #    '[M+H-CO]+', '[M+H-C3H6]+', '[M+H-C2H6O]+', '[M+H-CH3]+',
+    #    '[M+H-HF]+', '[Cat]+', '[2M-H+2i]-', '[M+H-C6H10O5]+',
+    #    '[M+H-CH5N]+', '[M-H-C6H10O5]-', '[M+H+K]2+', '[M+OH]-',
+    #    '[M+H-Br]+', '[M+H-C2H7N]+', '[M+H-CO2]+', '[M+H+Na]2+',
+    #    '[2M+H+2i]+', '[M+H-HCl]+', '[M+H+4i]+', '[2M-H+4i]-', '[M+2Na]2+',
+    #    '[M+H-CH4O3]+', '[M+H-C6H10]+', '[M+H-HCN]+', '[M-H-CO2+2i]-',
+    #    '[M+K]+', '[M+H-CHNO]+', '[3M+H]+', '[M+H-C2H5N]+', '[M+Na+2i]+',
+    #    '[M+3Na-2H]+'
 
 # Valid adducts
 ion2onehot_pos = {
@@ -115,7 +138,31 @@ ion2onehot_pos = {
     "[M]+": 5,
     "[M-H4O2+H]+": 6,
     "[M+H-2H2O]+": 6,
+    "[M-H]-": 7,
+    "[M+Cl]-": 8,
+    "[M-H2O-H]-": 9,
+    "[M-H-H2O]-": 9,
+    "[M-H-CO2]-": 10,
 }
+
+# add equivalent keys: [M]1+ == [M]+, [NH3] == [H3N]
+_ori_ions = list(ion2mass.keys())
+for ion in _ori_ions:
+    adduct, charge = ion.split(']')
+    if not charge[0].isnumeric():
+        eq_ion = adduct + ']1' + charge
+        ion2mass[eq_ion] = ion2mass[ion]
+        if ion in ion2onehot_pos:
+            ion2onehot_pos[eq_ion] = ion2onehot_pos[ion]
+
+_ori_ions = list(ion2mass.keys())
+for ion in _ori_ions:
+    adduct, charge = ion.split(']')
+    if 'H3N' in adduct:
+        eq_ion = ion.replace('H3N', 'NH3')
+        ion2mass[eq_ion] = ion2mass[ion]
+        if ion in ion2onehot_pos:
+            ion2onehot_pos[eq_ion] = ion2onehot_pos[ion]
 
 
 def formula_to_dense(chem_formula: str) -> np.ndarray:
@@ -475,3 +522,14 @@ def npclassifier_query(smiles):
     out.raise_for_status()
     out_json = out.json()
     return {ikey: out_json}
+
+
+def get_collision_energy(filename):
+    colli_eng = re.findall('collision +([0-9]+\.?[0-9]*|nan).*', filename)
+    if len(colli_eng) > 1:
+        raise ValueError(f'Multiple collision energies found in {filename}')
+    if len(colli_eng) == 1:
+        colli_eng = colli_eng[0].split()[-1]
+    else:
+        colli_eng = 'nan'
+    return colli_eng

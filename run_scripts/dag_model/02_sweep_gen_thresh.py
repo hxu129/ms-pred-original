@@ -8,23 +8,23 @@ workers = 32
 devices = ",".join([])
 python_file = "src/ms_pred/dag_pred/predict_gen.py"
 max_nodes = [10, 20, 30, 40, 50, 100, 200, 300, 500, 1000]
-subform_name = "magma_subform_50"
+subform_name = "magma_subform_50.hdf5"
 debug = False
 
 res_entries = [
-    {"folder": "results/dag_nist20/scaffold_1/", 
+    {"folder": "results/dag_nist20/scaffold_1/",
      "dataset": "nist20",
      "test_split": "scaffold_1"},
 
-    {"folder": "results/dag_nist20/split_1_rnd1/", 
+    {"folder": "results/dag_nist20/split_1_rnd1/",
      "dataset": "nist20",
      "test_split": "split_1"},
 
-    {"folder": "results/dag_nist20/split_1_rnd2/", 
+    {"folder": "results/dag_nist20/split_1_rnd2/",
      "dataset": "nist20",
      "test_split": "split_1"},
 
-    {"folder": "results/dag_nist20/split_1_rnd3/", 
+    {"folder": "results/dag_nist20/split_1_rnd3/",
      "dataset": "nist20",
      "test_split": "split_1"},
 
@@ -47,7 +47,7 @@ if debug:
 for res_entry in res_entries:
     res_folder = Path(res_entry['folder'])
     dataset = res_entry['dataset']
-    models = sorted(list(res_folder.rglob("version_0/*.ckpt")))
+    models = sorted(list((res_folder / "version_0").rglob("*.ckpt")))
     split = res_entry['test_split']
     for model in models:
         save_dir_base = model.parent.parent
@@ -82,15 +82,15 @@ for res_entry in res_entries:
 
             # Convert to form files from dag
         for pred_dir in pred_dir_folders:
-            tree_pred_folder = pred_dir / "tree_preds"
-            form_pred_folder = pred_dir / "form_preds"
-            form_pred_folder.mkdir(exist_ok=True)
+            tree_pred_folder = pred_dir / "tree_preds.hdf5"
+            form_pred_folder = pred_dir / "form_preds.hdf5"
             cmd = f"""python data_scripts/dag/dag_to_subform.py \\
-                --num-workers 0 \\
+                --num-workers {workers} \\
                 --dag-folder {tree_pred_folder} \\
                 --out-dir {form_pred_folder} \\
                 --all-h-shifts
             """
+            print(cmd + "\n")
             subprocess.run(cmd, shell=True)
             form_dir_folders.append(form_pred_folder)
 

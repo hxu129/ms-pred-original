@@ -2,13 +2,15 @@
 import sys
 import copy
 import logging
-from pathlib import Path
+from pathlib import Path, PosixPath
 import json
 from itertools import groupby, islice
 from typing import Tuple, List
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import h5py
+from matplotlib import pyplot as plt
 
 import ms_pred.common.chem_utils as chem_utils
 
@@ -22,6 +24,55 @@ from pytorch_lightning.utilities import rank_zero_only
 
 def get_data_dir(dataset_name: str) -> Path:
     return Path("data/spec_datasets") / dataset_name
+
+class HDF5Dataset:
+    """
+    A dataset as a HDF5 file
+    """
+    def __init__(self, path, mode="r"):
+        self.path = path
+        self.h5_obj = h5py.File(path, mode=mode)
+
+    def __getitem__(self, idx):
+        return self.h5_obj[idx]
+
+    def __setitem__(self, key, value):
+        self.h5_obj[key] = value
+
+    def __contains__(self, idx):
+        return idx in self.h5_obj
+
+    def get_all_names(self):
+        return self.h5_obj.keys()
+
+    def read_str(self, name):
+        str_obj = self.h5_obj[name][0]
+        if type(str_obj) is not bytes:
+            raise TypeError(f'Wrong type of {name}')
+        return str_obj
+
+    def write_str(self, name, data):
+        dt = h5py.special_dtype(vlen=str)
+        ds = self.h5_obj.create_dataset(name, (1,), dtype=dt)
+        ds[0] = data
+
+    def write_dict(self, dict):
+        """dict entries: {filename: data}"""
+        for filename, data in dict.items():
+            self.write_str(filename, data)
+
+    def write_list_of_tuples(self, list_of_tuples):
+        """each tuple is (filename, data)"""
+        for tup in list_of_tuples:
+            if tup is None:
+                continue
+            self.write_str(tup[0], tup[1])
+
+    def close(self):
+        self.h5_obj.close()
+
+    def flush(self):
+        self.h5_obj.flush()
 
 
 def setup_logger(save_dir, log_name="output.log", debug=False):
@@ -106,18 +157,23 @@ class ConsoleLogger(Logger):
 # Parsing
 
 
-def parse_spectra(spectra_file: str) -> Tuple[dict, List[Tuple[str, np.ndarray]]]:
+def parse_spectra(spectra_file: [str, list]) -> Tuple[dict, List[Tuple[str, np.ndarray]]]:
     """parse_spectra.
 
     Parses spectra in the SIRIUS format and returns
 
     Args:
-        spectra_file (str): Name of spectra file to parse
+        spectra_file (str or list): Name of spectra file to parse
     Return:
         Tuple[dict, List[Tuple[str, np.ndarray]]]: metadata and list of spectra
             tuples containing name and array
     """
-    lines = [i.strip() for i in open(spectra_file, "r").readlines()]
+    if type(spectra_file) is str or type(spectra_file) is PosixPath:
+        lines = [i.strip() for i in open(spectra_file, "r").readlines()]
+    elif type(spectra_file) is list:
+        lines = [i.decode('utf-8').strip() for i in spectra_file]
+    else:
+        raise ValueError(f'type of variable spectra_file not understood, got {type(spectra_file)}')
 
     group_num = 0
     metadata = {}
@@ -162,8 +218,9 @@ def parse_spectra(spectra_file: str) -> Tuple[dict, List[Tuple[str, np.ndarray]]
             metadata.update(entries)
         group_num += 1
 
-    metadata["_FILE_PATH"] = spectra_file
-    metadata["_FILE"] = Path(spectra_file).stem
+    if type(spectra_file) is str:
+        metadata["_FILE_PATH"] = spectra_file
+        metadata["_FILE"] = Path(spectra_file).stem
     return metadata, spectras
 
 
@@ -237,7 +294,7 @@ def parse_cfm_out(spectra_file: str, max_merge=False) -> Tuple[dict, pd.DataFram
     return meta_data, full_spec
 
 
-def process_spec_file(meta, tuples, precision=4):
+def process_spec_file(meta, tuples, precision=4, merge_specs=True, exclude_parent=False):
     """process_spec_file."""
 
     parent_mass = meta.get("parentmass", None)
@@ -248,34 +305,55 @@ def process_spec_file(meta, tuples, precision=4):
     parent_mass = float(parent_mass)
 
     # First norm spectra
-    fused_tuples = [x for _, x in tuples if x.size > 0]
+    fused_tuples = {ce: x for ce, x in tuples if x.size > 0}
 
     if len(fused_tuples) == 0:
         return
 
-    mz_to_inten_pair = {}
-    new_tuples = []
-    for i in fused_tuples:
-        for tup in i:
-            mz, inten = tup
-            mz_ind = np.round(mz, precision)
-            cur_pair = mz_to_inten_pair.get(mz_ind)
-            if cur_pair is None:
-                mz_to_inten_pair[mz_ind] = tup
-                new_tuples.append(tup)
-            elif inten > cur_pair[1]:
-                cur_pair[1] = inten
-            else:
-                pass
+    if merge_specs:
+        mz_to_inten_pair = {}
+        new_tuples = []
+        for i in fused_tuples.values():
+            for tup in i:
+                mz, inten = tup
+                mz_ind = np.round(mz, precision)
+                cur_pair = mz_to_inten_pair.get(mz_ind)
+                if cur_pair is None:
+                    mz_to_inten_pair[mz_ind] = tup
+                    new_tuples.append(tup)
+                elif inten > cur_pair[1]:
+                    cur_pair[1] = inten # max merging
+                else:
+                    pass
 
-    merged_spec = np.vstack(new_tuples)
-    merged_spec = merged_spec[merged_spec[:, 0] <= (parent_mass + 1)]
-    merged_spec[:, 1] = merged_spec[:, 1] / merged_spec[:, 1].max()
+        merged_spec = np.vstack(new_tuples)
+        if exclude_parent:
+            merged_spec = merged_spec[merged_spec[:, 0] <= (parent_mass - 1)]
+        else:
+            merged_spec = merged_spec[merged_spec[:, 0] <= (parent_mass + 1)]
+        merged_spec = merged_spec[merged_spec[:, 1] > 0]
+        if len(merged_spec) == 0:
+            return
+        merged_spec[:, 1] = merged_spec[:, 1] / merged_spec[:, 1].max()
 
-    # Sqrt intensities here
-    merged_spec[:, 1] = np.sqrt(merged_spec[:, 1])
-    return merged_spec
+        # Sqrt intensities here
+        merged_spec[:, 1] = np.sqrt(merged_spec[:, 1])
+        return merged_spec
+    else:
+        new_specs = {}
+        for k, v in fused_tuples.items():
+            new_spec = np.vstack(v)
+            new_spec = new_spec[new_spec[:, 0] <= (parent_mass + 1)]
+            new_spec = new_spec[new_spec[:, 1] > 0]
+            if len(new_spec) == 0:
+                continue
+            new_spec[:, 1] = new_spec[:, 1] / new_spec[:, 1].max()
 
+            # Sqrt intensities here
+            new_spec[:, 1] = np.sqrt(new_spec[:, 1])
+
+            new_specs[k] = new_spec
+        return new_specs
 
 def bin_form_file(spec_file, num_bins, upper_limit) -> Tuple[dict, np.ndarray]:
     """bin_form_file.
@@ -451,6 +529,37 @@ def bin_mass_results(
             return m_str
 
 
+def bin_peak_results(
+    spec,
+    peak_bins=[
+        (0, 5),
+        (5, 10),
+        (10, 15),
+        (15, 20),
+        (20, 25),
+        (25, 30),
+        (30, 40),
+        (40, 500),
+    ],
+    binned_spec = True,
+    reduction = 'mean',  # mean / max / min
+):
+    """bin_peak_results.
+
+    Use to stratify results
+    """
+    if binned_spec:
+        num_peaks = [np.sum(sp > 0) for sp in spec.values()]
+    else:
+        num_peaks = [np.sum(sp[:, 1] > 0)  for sp in spec.values()]
+    reduction_func = eval('np.' + reduction)
+    num_peaks = reduction_func(num_peaks)
+    for i, j in peak_bins:
+        m_str = f"({i}, {j}]"
+        if num_peaks <= j and num_peaks > i:
+            return m_str
+
+
 def batches(it, chunk_size: int):
     """Consume an iterable in batches of size chunk_size""" ""
     it = iter(it)
@@ -503,3 +612,41 @@ def build_mgf_str(
 
     full_out = "\n\n".join(entries)
     return full_out
+
+
+def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title=''):
+    fig = plt.figure(figsize=(10, 7), dpi=300)
+    largest_mz = 0
+    for idx, spec in enumerate((spec1, spec2)):
+        spec = np.array(spec).astype(np.float64)
+        spec[:, 1] = spec[:, 1] / spec[:, 1].max()
+        spec[:, 1] = np.sqrt(spec[:, 1])
+        spec = spec[spec[:, 1] > 0.01]
+        largest_mz = max(largest_mz, spec[:, 0].max())
+        intensity_arr = spec[:, 1] if idx == 0 else -spec[:, 1]
+        for mz, inten in zip(spec[:, 0], intensity_arr):
+            markerline, stemlines, baseline = plt.stem(mz, inten, 'g' if mz in spec1[:, 0] and mz in spec2[:, 0] else 'k', markerfmt=" ")
+            plt.setp(stemlines, 'linewidth', 0.5)
+
+    plt.axhline(y=0, color='k', linestyle='-')
+    plt.ylabel(f'{spec2_name} intensity' + ' ' * 40 + f'{spec1_name} intensity')
+
+    ax = plt.gca()
+    ax.set_xlim(0, largest_mz * 1.05)
+    ax.set_ylim(-1.1, 1.1)
+
+    if title:
+        plt.title(title)
+
+
+def np_stack_padding(it, axis=0):
+
+    def resize(row, size):
+        new = np.array(row)
+        new.resize(size)
+        return new
+
+    # find longest row length
+    max_shape = [max(i) for i in zip(*[j.shape for j in it])]
+    mat = np.stack([resize(row, max_shape) for row in it], axis=axis)
+    return mat

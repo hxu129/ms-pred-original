@@ -33,6 +33,7 @@ class FragGNN(pl.LightningModule):
         inject_early: bool = False,
         warmup: int = 1000,
         embed_adduct=False,
+        embed_collision=False,
         encode_forms: bool = False,
         add_hs: bool = False,
         **kwargs,
@@ -56,6 +57,7 @@ class FragGNN(pl.LightningModule):
             inject_early (bool, optional): _description_. Defaults to False.
             warmup (int, optional): _description_. Defaults to 1000.
             embed_adduct (bool, optional): _description_. Defaults to False.
+            embed_collision (bool, optional): _description_. Defaults to False.
             encode_forms (bool, optional): _description_. Defaults to False.
             add_hs (bool, optional): _description_. Defaults to False.
 
@@ -69,6 +71,7 @@ class FragGNN(pl.LightningModule):
         self.root_encode = root_encode
         self.pe_embed_k = pe_embed_k
         self.embed_adduct = embed_adduct
+        self.embed_collision = embed_collision
         self.encode_forms = encode_forms
         self.add_hs = add_hs
 
@@ -112,11 +115,33 @@ class FragGNN(pl.LightningModule):
 
         adduct_shift = 0
         if self.embed_adduct:
-            adduct_types = len(common.ion2onehot_pos)
+            adduct_types = len(set(common.ion2onehot_pos.values()))
             onehot = torch.eye(adduct_types)
             self.adduct_embedder = nn.Parameter(onehot.float())
             self.adduct_embedder.requires_grad = False
             adduct_shift = adduct_types
+
+        collision_shift = 0
+        if self.embed_collision:
+            pe_dim = common.COLLISION_PE_DIM
+            pe_scalar = common.COLLISION_PE_SCALAR
+            pe_power =  2 * torch.arange(pe_dim // 2) / pe_dim
+            self.collision_embedder_denominators = nn.Parameter(torch.pow(pe_scalar, pe_power))
+            self.collision_embedder_denominators.requires_grad = False
+            collision_shift = pe_dim
+
+            # Not used: Compute the merged collision embedding as the mean of all energies 0 - 100 eV
+            # collision_eng_steps = torch.arange(0, 100, 0.01)
+            # self.collision_embed_merged = nn.Parameter(torch.cat(
+            #     (torch.sin(collision_eng_steps.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
+            #      torch.cos(collision_eng_steps.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0))),
+            #     dim=1
+            # ).mean(dim=0))
+            # self.collision_embed_merged.requires_grad = False
+
+            # All-zero for collision == nan
+            self.collision_embed_merged = nn.Parameter(torch.zeros(pe_dim))
+            self.collision_embed_merged.requires_grad = False
 
         # Define network
         self.gnn = nn_utils.MoleculeGNN(
@@ -124,7 +149,7 @@ class FragGNN(pl.LightningModule):
             num_step_message_passing=self.layers,
             set_transform_layers=self.set_layers,
             mpnn_type=self.mpnn_type,
-            gnn_node_feats=node_feats + adduct_shift,
+            gnn_node_feats=node_feats + adduct_shift + collision_shift,
             gnn_edge_feats=edge_feats,
             dropout=self.dropout,
         )
@@ -183,6 +208,8 @@ class FragGNN(pl.LightningModule):
         root_repr,
         ind_maps,
         broken,
+        collision_engs,
+        precursor_mzs,
         adducts,
         root_forms=None,
         frag_forms=None,
@@ -194,6 +221,8 @@ class FragGNN(pl.LightningModule):
             root_repr (_type_): _description_
             ind_maps (_type_): _description_
             broken (_type_): _description_
+            collision_engs (_type_): _description_
+            precursor_mzs (_type_): _description_
             adducts (_type_): _description_
             root_forms (_type_, optional): _description_. Defaults to None.
             frag_forms (_type_, optional): _description_. Defaults to None.
@@ -216,6 +245,21 @@ class FragGNN(pl.LightningModule):
                     )
                     ndata = root_repr.ndata["h"]
                     ndata = torch.cat([ndata, embed_adducts_expand], -1)
+                    root_repr.ndata["h"] = ndata
+                if self.embed_collision:
+                    embed_collision = torch.cat(
+                        (torch.sin(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
+                         torch.cos(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0))),
+                        dim=1
+                    )
+                    embed_collision = torch.where(  # handle entries without collision energy (== nan)
+                        torch.isnan(embed_collision), self.collision_embed_merged.unsqueeze(0), embed_collision
+                    )
+                    embed_collision_expand = embed_collision.repeat_interleave(
+                        root_repr.batch_num_nodes(), 0
+                    )
+                    ndata = root_repr.ndata["h"]
+                    ndata = torch.cat([ndata, embed_collision_expand], -1)
                     root_repr.ndata["h"] = ndata
                 root_embeddings = self.root_module(root_repr)
                 root_embeddings = self.pool(root_repr, root_embeddings)
@@ -241,6 +285,13 @@ class FragGNN(pl.LightningModule):
                 adducts_mapped, graphs.batch_num_nodes(), dim=0
             )
             concat_list.append(adducts_exp)
+
+        if self.embed_collision:
+            collision_mapped = embed_collision[ind_maps]
+            collision_exp = torch.repeat_interleave(
+                collision_mapped, graphs.batch_num_nodes(), dim=0
+            )
+            concat_list.append(collision_exp)
 
         with graphs.local_scope():
             graphs.ndata["h"] = torch.cat(concat_list, -1).float()
@@ -298,7 +349,9 @@ class FragGNN(pl.LightningModule):
             natoms: Number of atoms in each atom to consider padding
 
         """
-        loss = self.bce_loss(outputs, targets.float())
+        targets = targets.float()
+        loss = self.bce_loss(outputs, targets)
+        #loss = loss * (0.5 + 0.5 * targets)
         is_valid = (
             torch.arange(loss.shape[1], device=loss.device)[None, :] < natoms[:, None]
         )
@@ -312,6 +365,8 @@ class FragGNN(pl.LightningModule):
             batch["inds"],
             broken=batch["broken_bonds"],
             adducts=batch["adducts"],
+            collision_engs=batch["collision_engs"],
+            precursor_mzs=batch["precursor_mzs"],
             root_forms=batch["root_form_vecs"],
             frag_forms=batch["frag_form_vecs"],
         )
@@ -354,6 +409,8 @@ class FragGNN(pl.LightningModule):
     def predict_mol(
         self,
         root_smi: str,
+        collision_eng,
+        precursor_mz,
         adduct,
         threshold=0,
         device: str = "cpu",
@@ -383,7 +440,9 @@ class FragGNN(pl.LightningModule):
         root_form = common.form_from_smi(root_smi)
         root_form_vec = torch.FloatTensor(common.formula_to_dense(root_form))
         root_form_vec = root_form_vec.reshape(1, -1)
-        adducts = torch.LongTensor([common.ion2onehot_pos[adduct]])
+        adducts = torch.LongTensor([common.ion2onehot_pos[adduct] if type(adduct) is str else adduct])
+        collision_engs = torch.FloatTensor([collision_eng])
+        precursor_mzs = torch.FloatTensor([precursor_mz])
 
         # Step 2: Featurize the root molecule
         root_graph_dict = self.tree_processor.featurize_frag(
@@ -477,6 +536,8 @@ class FragGNN(pl.LightningModule):
                     root_repr=root_repr,
                     ind_maps=inds,
                     broken=broken_nums_tensor,  # torch.ones_like(inds) * depth,
+                    collision_engs=collision_engs,
+                    precursor_mzs=precursor_mzs,
                     adducts=adducts,
                     root_forms=root_form_vec,
                     frag_forms=frag_form_vecs,

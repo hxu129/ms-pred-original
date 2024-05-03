@@ -4,7 +4,7 @@ import argparse
 
 python_file = "src/ms_pred/dag_pred/predict_inten.py"
 node_num = 100
-num_workers = 32
+num_workers = 64
 test_entries = [
     {"dataset": "nist20", "split": "scaffold_1", "folder": "scaffold_1"},
     {"dataset": "nist20", "split": "split_1", "folder": "split_1_rnd1"},
@@ -34,11 +34,11 @@ for test_entry in test_entries:
 
     # Note: Must use preds_train_01
     magma_dag_folder = (
-        base_formula_folder / folder / f"preds_train_{node_num}/tree_preds"
+        base_formula_folder / folder / f"preds_train_{node_num}/tree_preds.hdf5"
     )
     print(magma_dag_folder)
     cmd = f"""python {python_file} \\
-    --batch-size 32 \\
+    --batch-size {num_workers} \\
     --dataset-name {dataset} \\
     --split-name {split}.tsv \\
     --checkpoint {model} \\
@@ -61,7 +61,7 @@ for test_entry in test_entries:
     --binned-pred-file {out_binned} \\
     --max-peaks 100 \\
     --min-inten 0 \\
-    --formula-dir-name no_subform \\
+    --formula-dir-name no_subform.hdf5 \\
     --dataset {dataset}  \\
     """
     print(eval_cmd)

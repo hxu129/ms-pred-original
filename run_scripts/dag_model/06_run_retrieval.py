@@ -4,11 +4,13 @@ import subprocess
 import json
 
 pred_file = "src/ms_pred/dag_pred/predict_smis.py"
-retrieve_file = "src/ms_pred/retrieval/retrieval_binned.py"
+retrieve_file = "src/ms_pred/retrieval/retrieval_benchmark.py"
 subform_name = "no_subform"
 devices = ",".join(["1"])
 max_nodes = 100
+num_workers = 64
 dist = "cos"
+binned_out = True
 
 test_entries = [
     {"dataset": "nist20",
@@ -42,6 +44,7 @@ test_entries = [
      "max_k": 50},
 ]
 
+pred_filename = "binned_preds.p" if binned_out else "preds.p"
 
 for test_entry in test_entries:
     dataset = test_entry['dataset']
@@ -50,11 +53,11 @@ for test_entry in test_entries:
     maxk = test_entry['max_k']
     inten_dir = Path(f"results/dag_inten_{dataset}")
     inten_model =  inten_dir / train_split  / "version_0/best.ckpt"
-    if not inten_model.exists(): 
+    if not inten_model.exists():
         print(f"Could not find model {inten_model}; skipping\n: {json.dumps(test_entry, indent=1)}")
         continue
 
-    labels = f"retrieval/cands_df_{split}_{maxk}.tsv"
+    labels = f"data/spec_datasets/{dataset}/retrieval/cands_df_{split}_{maxk}.tsv"
 
     save_dir = inten_model.parent.parent / f"retrieval_{dataset}_{split}_{maxk}"
     save_dir.mkdir(exist_ok=True)
@@ -63,11 +66,10 @@ for test_entry in test_entries:
     form_folder = Path(args["magma_dag_folder"])
     gen_model = form_folder.parent / "version_0/best.ckpt"
 
-    labels = f"retrieval/cands_df_{split}_{maxk}.tsv"
     save_dir = save_dir
     save_dir.mkdir(exist_ok=True)
     cmd = f"""python {pred_file} \\
-    --batch-size 32  \\
+    --num-workers {num_workers}  \\
     --dataset-name {dataset} \\
     --sparse-out \\
     --sparse-k 100 \\
@@ -77,31 +79,24 @@ for test_entry in test_entries:
     --inten-checkpoint {inten_model} \\
     --save-dir {save_dir} \\
     --dataset-labels {labels} \\
-    --binned-out \\
     """
+    if binned_out:
+        cmd += "--binned-out"
     device_str = f"CUDA_VISIBLE_DEVICES={devices}"
     cmd = f"{device_str} {cmd}"
     print(cmd + "\n")
     subprocess.run(cmd, shell=True)
 
-    # Run retrieval
-    cmd = f"""python {retrieve_file} \\
-    --dataset {dataset} \\
-    --formula-dir-name {subform_name} \\
-    --binned-pred-file {save_dir / 'binned_preds.p'} \\
-    --dist-fn {dist} \\
-    """
+    # Run retrieval and random baseline
+    for dist_fn in [dist, 'random']:
+        cmd = f"""python {retrieve_file} \\
+        --dataset {dataset} \\
+        --formula-dir-name {subform_name}.hdf5 \\
+        --pred-file {save_dir / pred_filename} \\
+        --dist-fn {dist_fn} \\
+        """
+        if binned_out:
+            cmd += "--binned-pred"
 
-    print(cmd + "\n")
-    subprocess.run(cmd, shell=True)
-
-    # Run retrieval random baseline
-    cmd = f"""python {retrieve_file} \\
-    --dataset {dataset} \\
-    --formula-dir-name {subform_name} \\
-    --binned-pred-file {save_dir / 'binned_preds.p'} \\
-    --dist-fn random \\
-    """
-
-    print(cmd + "\n")
-    subprocess.run(cmd, shell=True)
+        print(cmd + "\n")
+        subprocess.run(cmd, shell=True)

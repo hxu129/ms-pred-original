@@ -9,6 +9,7 @@ from datetime import datetime
 import yaml
 import argparse
 import json
+import ast
 from pathlib import Path
 
 import pandas as pd
@@ -100,8 +101,8 @@ def predict():
     model = gen_model.FragGNN.load_from_checkpoint(best_checkpoint, map_location="cpu")
 
     logging.info(f"Loaded model with from {best_checkpoint}")
-    save_path = Path(kwargs["save_dir"]) / "tree_preds"
-    save_path.mkdir(exist_ok=True)
+    save_path = Path(kwargs["save_dir"]) / "tree_preds.hdf5"
+    save_path.parent.mkdir(exist_ok=True)
     with torch.no_grad():
         model.eval()
         model.freeze()
@@ -110,28 +111,35 @@ def predict():
         model.to(device)
 
         def single_predict_mol(entry):
-            torch.set_num_threads(8)
+            torch.set_num_threads(1)
 
             smi = entry["smiles"]
             name = entry["spec"]
             adduct = entry["ionization"]
+            precursor_mz = entry["precursor"]
+            collision_energies = [i for i in ast.literal_eval(entry["collision_energies"])]
             inchi = Chem.MolToInchi(Chem.MolFromSmiles(smi))
-            pred = model.predict_mol(
-                smi,
-                adduct=adduct,
-                threshold=kwargs["threshold"],
-                device=device,
-                max_nodes=kwargs["max_nodes"],
-            )
-            output = {
-                "root_inchi": inchi,
-                "name": name,
-                "frags": pred,
-            }
-            out_file = save_path / f"pred_{name}.json"
-            with open(out_file, "w") as fp:
-                json.dump(output, fp, indent=2)
-            return output
+            return_dict = {}
+            for colli_eng in collision_energies:
+                colli_eng_val = float(colli_eng.split()[0])
+                pred = model.predict_mol(
+                    smi,
+                    precursor_mz=precursor_mz,
+                    collision_eng=colli_eng_val,
+                    adduct=adduct,
+                    threshold=kwargs["threshold"],
+                    device=device,
+                    max_nodes=kwargs["max_nodes"],
+                )
+                output = {
+                    "root_inchi": inchi,
+                    "name": name,
+                    "frags": pred,
+                    "collision_energy": colli_eng_val,
+                }
+                out_name = f"pred_{name}_collision {colli_eng}.json"
+                return_dict[out_name] = json.dumps(output, indent=2)
+            return return_dict
 
         entries = [j for _, j in df.iterrows()]
         if kwargs["debug"]:
@@ -139,13 +147,20 @@ def predict():
             kwargs["batch_size"] = 0
 
         if kwargs["batch_size"] == 0:
-            [single_predict_mol(i) for i in tqdm(entries)]
+            output_dicts = [single_predict_mol(i) for i in tqdm(entries)]
         else:
-            common.chunked_parallel(
+            output_dicts = common.chunked_parallel(
                 entries,
                 single_predict_mol,
+                chunks=1000,
                 max_cpu=kwargs["batch_size"],
             )
+
+        # Write all output jsons to a hdf5 file
+        h5 = common.HDF5Dataset(save_path, mode='w')
+        for out_dic in tqdm(output_dicts):
+            h5.write_dict(out_dic)
+        h5.close()
 
 
 if __name__ == "__main__":

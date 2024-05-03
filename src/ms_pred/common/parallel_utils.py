@@ -98,7 +98,7 @@ def chunked_parallel(
     from pathos import multiprocessing as mp
     cpus = min(mp.cpu_count(), max_cpu)
     with mp.ProcessPool(processes=cpus) as pool:
-        list_outputs = list(tqdm(pool.imap(batch_func, chunked_list), total=num_chunks))
+        list_outputs = list(tqdm(pool.imap(batch_func, chunked_list), total=len(chunked_list)))
 
     # import multiprocessing as mp
     # cpus = min(mp.cpu_count(), max_cpu)
