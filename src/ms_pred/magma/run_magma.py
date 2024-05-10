@@ -156,7 +156,7 @@ def magma_augmentation(
     tree_return = {}
 
     spec_h5 = common.HDF5Dataset(spec_dir)
-    spec_readlines = spec_h5.read_str(spec_name).split(b'\n\n') # not know why \n is duplicated
+    spec_readlines = spec_h5.read_str(spec_name).split('\n')
     meta, spectras = common.parse_spectra(spec_readlines)
 
     spec_name_clean = Path(spec_name).stem  # remove '.json'

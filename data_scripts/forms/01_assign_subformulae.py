@@ -267,7 +267,7 @@ def get_output_dict(
 def process_spec_file(spec_name: str, data_dir: Path):
     """process_spec_file."""
     ms_h5 = common.HDF5Dataset(data_dir / "spec_files.hdf5")
-    spec_lines = ms_h5.read_str(f"{spec_name}.ms").split(b'\n\n')
+    spec_lines = ms_h5.read_str(f"{spec_name}.ms").split('\n')
     meta, tuples = common.parse_spectra(spec_lines)
     specs = common.process_spec_file(meta, tuples, merge_specs=False)
     # if 'nan' not in specs:  # include a merged spec

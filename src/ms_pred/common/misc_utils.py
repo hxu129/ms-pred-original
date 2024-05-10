@@ -45,11 +45,11 @@ class HDF5Dataset:
     def get_all_names(self):
         return self.h5_obj.keys()
 
-    def read_str(self, name):
+    def read_str(self, name, encoding='utf-8'):
         str_obj = self.h5_obj[name][0]
         if type(str_obj) is not bytes:
             raise TypeError(f'Wrong type of {name}')
-        return str_obj
+        return str_obj.decode(encoding)
 
     def write_str(self, name, data):
         dt = h5py.special_dtype(vlen=str)
@@ -171,7 +171,7 @@ def parse_spectra(spectra_file: [str, list]) -> Tuple[dict, List[Tuple[str, np.n
     if type(spectra_file) is str or type(spectra_file) is PosixPath:
         lines = [i.strip() for i in open(spectra_file, "r").readlines()]
     elif type(spectra_file) is list:
-        lines = [i.decode('utf-8').strip() for i in spectra_file]
+        lines = [i.strip() for i in spectra_file]
     else:
         raise ValueError(f'type of variable spectra_file not understood, got {type(spectra_file)}')
 
