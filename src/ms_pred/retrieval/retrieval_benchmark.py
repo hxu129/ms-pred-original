@@ -90,7 +90,7 @@ def process_spec_file(spec_name, name_to_colli: dict, spec_dir: Path, num_bins: 
     return return_dict
 
 
-def cos_dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ignore_peak=None) -> np.ndarray:
+def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ignore_peak=None, func='cos') -> np.ndarray:
     """cos_dist for binned spectrum
 
     Args:
@@ -125,18 +125,37 @@ def cos_dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True,
 
         true_npeaks.append(np.sum(true_spec > 0))
 
-        norm_pred = norm(pred_specs, axis=-1) + 1e-22  # , ord=2) #+ 1e-22
-        norm_true = norm(true_spec, axis=-1) + 1e-22  # , ord=2) #+ 1e-22
+        if func == 'cos':
+            norm_pred = norm(pred_specs, axis=-1) + 1e-22  # , ord=2) #+ 1e-22
+            norm_true = norm(true_spec, axis=-1) + 1e-22  # , ord=2) #+ 1e-22
 
-        # Cos
-        dist.append(1 - np.dot(pred_specs, true_spec) / (norm_pred * norm_true))
+            # Cos
+            dist.append(1 - np.dot(pred_specs, true_spec) / (norm_pred * norm_true))
+        elif func == 'entropy':
+            def norm_peaks(prob):
+                return prob / (prob.sum(axis=-1, keepdims=True) + 1e-9)
+
+            def entropy(prob):
+                assert np.all(np.abs(prob.sum(axis=-1) - 1) < 5e-3), f"Diff to 1: {np.max(np.abs(prob.sum(axis=-1) - 1))}"
+                return -np.sum(prob * np.log(prob + 1e-9), axis=-1)
+
+            norm_pred = norm_peaks(pred_specs)
+            norm_true = norm_peaks(true_spec)
+            entropy_pred = entropy(norm_pred)
+            entropy_targ = entropy(norm_true)
+            entropy_mix = entropy((norm_pred + norm_true) / 2)
+            dist.append(2 * entropy_mix - entropy_pred - entropy_targ)
 
     dist = np.array(dist)  # num of colli energy x number of candidates
-    #weights = np.clip(np.log((np.array(true_npeaks) - 1) / 10 + 1), a_min=0, a_max=None)  # num of colli energy
+    #weights = np.clip(np.log((np.array(true_npeaks) - 1) / 10 + 1), a_min=0, a_max=None)  # value of colli energy
     weights = np.ones(dist.shape[0])
     weights = weights / weights.sum()
 
     return np.sum(dist * weights[:, None], axis=0)  # number of candidates
+
+# define cosine/entropy functions
+cos_dist_bin = partial(dist_bin, func='cos')
+entropy_dist_bin = partial(dist_bin, func='entropy')
 
 
 def cos_dist_hun(cand_preds_dict: List[Dict], true_spec_dict: dict, parent_mass: float, ignore_peak=False) -> np.ndarray:
@@ -163,7 +182,7 @@ def cos_dist_hun(cand_preds_dict: List[Dict], true_spec_dict: dict, parent_mass:
         norm_pred = norm(cand_preds[:, :, 1], axis=-1) + 1e-22
         norm_true = norm(true_spec[:, 1], axis=-1) + 1e-22
 
-        tol = parent_mass * 1e-5  # 10ppm tolerance
+        tol = parent_mass * 2e-5  # 20ppm tolerance
         mask = np.abs(cand_preds[:, :, None, 0] - true_spec[None, None, :, 0]) < tol
         score = cand_preds[:, :, None, 1] * true_spec[None, None, :, 1] / (norm_pred[:, None, None] * norm_true)
         score = score * mask
@@ -201,6 +220,8 @@ def rank_test_entry(
         dist = cos_dist_bin(cand_preds_dict=cand_preds, true_spec_dict=true_spec, ignore_peak=parent_mass_idx)
     elif dist_fn == "cos" and not binned_pred:
         dist = cos_dist_hun(cand_preds_dict=cand_preds, true_spec_dict=true_spec, parent_mass=parent_mass, ignore_peak=parent_mass_idx is not None)
+    elif dist_fn == "entropy" and binned_pred:
+        dist = entropy_dist_bin(cand_preds_dict=cand_preds, true_spec_dict=true_spec, ignore_peak=parent_mass_idx)
     elif dist_fn == "random":
         dist = np.random.randn(cand_preds.shape[0])
     else:
@@ -285,15 +306,46 @@ def main(args):
         outfile_grouped_mass = outfile.parent / f"{outfile.stem}_grouped_mass.tsv"
         outfile_grouped_peak = outfile.parent / f"{outfile.stem}_grouped_npeak.tsv"
 
-    pred_specs = pickle.load(open(pred_file, "rb"))
-    pred_spec_ars = pred_specs["preds"]
-    pred_ikeys = np.array(pred_specs["ikeys"])
-    pred_spec_names = np.array(pred_specs["spec_names"])
-    pred_spec_names_unique = np.unique(pred_spec_names)
-    use_sparse = pred_specs["sparse_out"]
+    pred_specs = common.HDF5Dataset(pred_file)
     if binned_pred:
-        upper_limit = pred_specs["upper_limit"]
-        num_bins = pred_specs["num_bins"]
+        upper_limit = pred_specs.attrs["upper_limit"]
+        num_bins = pred_specs.attrs["num_bins"]
+    use_sparse = pred_specs.attrs["sparse_out"]
+
+    pred_spec_ars = []
+    pred_ikeys = []
+    pred_spec_names = []
+    # iterate over h5 layers
+    for pred_spec_obj in pred_specs.h5_obj.values():
+        for smiles_obj in pred_spec_obj.values():
+            ikey = None
+            spec_dict = {}
+            name = None
+            for collision_eng_key, collision_eng_obj in smiles_obj.items():
+                if name is None:
+                    name = collision_eng_obj.attrs['spec_name']
+                if ikey is None:
+                    ikey = collision_eng_obj.attrs['ikey']
+                collision_eng_key = common.get_collision_energy(collision_eng_key)
+                spec_dict[collision_eng_key] = collision_eng_obj['spec'][:]
+            pred_spec_ars.append(spec_dict)
+            pred_ikeys.append(ikey)
+            pred_spec_names.append(name)
+
+    pred_spec_ars = np.array(pred_spec_ars)
+    pred_ikeys = np.array(pred_ikeys)
+    pred_spec_names = np.array(pred_spec_names)
+    pred_spec_names_unique = np.unique(pred_spec_names)
+
+    # pred_specs = pickle.load(open(pred_file, "rb"))
+    # pred_spec_ars = pred_specs["preds"]
+    # pred_ikeys = np.array(pred_specs["ikeys"])
+    # pred_spec_names = np.array(pred_specs["spec_names"])
+    # pred_spec_names_unique = np.unique(pred_spec_names)
+    # use_sparse = pred_specs["sparse_out"]
+    # if binned_pred:
+    #     upper_limit = pred_specs["upper_limit"]
+    #     num_bins = pred_specs["num_bins"]
 
     # if args.merged_specs:  # only keep collision_energy == nan
     #     for spec_name in name_to_colli.keys():  # filter true spec
@@ -347,8 +399,6 @@ def main(args):
         read_spec,
         chunks=100,
         max_cpu=16,
-        timeout=4000,
-        max_retries=3,
     )
     name_to_spec = dict(zip(pred_spec_names_unique, true_specs))
 

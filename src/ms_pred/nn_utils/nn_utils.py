@@ -3,11 +3,13 @@
 import copy
 import math
 import numpy as np
-import scipy.sparse as sparse
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch_sparse
+import torch_scatter
+import dgl
 
 from dgl.backend import pytorch as dgl_F
 import ms_pred.nn_utils.dgl_modules as dgl_mods
@@ -787,26 +789,83 @@ def random_walk_pe(g, k, eweight_name=None):
     tensor([[0.0000, 0.5000],
             [0.5000, 0.7500]])
     """
+    device = g.device
     N = g.num_nodes()  # number of nodes
     M = g.num_edges()  # number of edges
-    A = g.adj(scipy_fmt="csr")  # adjacency matrix
+
+    row, col = g.edges()
+
+    if eweight_name is None:
+        value = torch.ones(M, device=device)
+    else:
+        value = g.edata[eweight_name].squeeze().to(device)
+    # value_norm = torch_scatter.scatter(value, col, dim_size=N, reduce='sum').clamp(min=1)[col]
+    value_norm = torch_scatter.scatter(value, row, dim_size=N, reduce='sum')[row] + 1e-30
+    value = value / value_norm
+
+    if N <= 2_000:  # Dense code path for faster computation:
+        adj = torch.zeros((N, N), device=row.device)
+        adj[row, col] = value
+        loop_index = torch.arange(N, device=row.device)
+    else:
+        adj = torch_sparse.SparseTensor(row=row, col=col, value=value, sparse_sizes=(N, N))
+
+    def get_pe(out: torch.Tensor) -> torch.Tensor:
+        if isinstance(out, torch_sparse.SparseTensor):
+            return out.get_diag()
+        return out[loop_index, loop_index]
+
+    out = adj
+    pe_list = [get_pe(out)]
+    for _ in range(k - 1):
+        out = out @ adj
+        pe_list.append(get_pe(out))
+
+    pe = torch.stack(pe_list, dim=-1)
+
+    return pe
+
+    device = g.device
+    N = g.num_nodes()  # number of nodes
+    M = g.num_edges()  # number of edges
+    A = g.adj().to(device)  # adjacency matrix
     if eweight_name is not None:
         # add edge weights if required
-        W = sparse.csr_matrix(
-            (g.edata[eweight_name].squeeze(), g.find_edges(list(range(M)))),
-            shape=(N, N),
+        W = torch.sparse_coo_tensor(
+            indices=torch.stack(g.find_edges(list(range(M)))).to(device),
+            values=g.edata[eweight_name].squeeze().to(device),
+            size=(N, N),
         )
         A = A.multiply(W)
-    RW = np.array(A / (A.sum(1) + 1e-30))  # 1-step transition probability
+    A = torch_sparse.SparseTensor.from_torch_sparse_coo_tensor(A)
+    D_inv = torch_sparse.SparseTensor(
+        row=torch.arange(N).to(device),
+        col=torch.arange(N).to(device),
+        value=(1 / A.sum(1) + 1e-30)
+    )
+    RW = A.spspmm(D_inv)  # 1-step transition probability
 
     # Iterate for k steps
-    PE = [dgl_F.astype(dgl_F.tensor(np.array(RW.diagonal())), torch.float32)]
+    PE = [RW.get_diag()]
     RW_power = RW
     for _ in range(k - 1):
-        RW_power = RW_power @ RW
-        PE.append(dgl_F.astype(dgl_F.tensor(np.array(RW_power.diagonal())), torch.float32))
+        RW_power = RW_power.spspmm(RW)
+        PE.append(RW_power.get_diag())
     PE = dgl_F.stack(PE, dim=-1)
     return PE
+
+
+def split_dgl_batch(batch: dgl.DGLGraph, max_dgl_edges, frag_hashes, rev_idx, frag_form_vecs):
+    if batch.num_edges() > max_dgl_edges and batch.batch_size > 1:
+        split = batch.batch_size // 2
+        list_of_graphs = dgl.unbatch(batch)
+        new_batch1 = split_dgl_batch(dgl.batch(list_of_graphs[:split]), max_dgl_edges,
+                                     frag_hashes[:split], rev_idx[:split], frag_form_vecs[:split])
+        new_batch2 = split_dgl_batch(dgl.batch(list_of_graphs[split:]), max_dgl_edges,
+                                     frag_hashes[split:], rev_idx[split:], frag_form_vecs[split:])
+        return new_batch1 + new_batch2
+    else:
+        return [(batch, frag_hashes, rev_idx, frag_form_vecs)]
 
 
 def dict_to_device(data_dict, device):

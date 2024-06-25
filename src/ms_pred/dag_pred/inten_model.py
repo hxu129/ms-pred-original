@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch_scatter as ts
 import dgl.nn as dgl_nn
 import pygmtools as pygm
+import functools
 
 
 import ms_pred.common as common
@@ -39,11 +40,13 @@ class IntenGNN(pl.LightningModule):
         warmup: int = 1000,
         embed_adduct = False,
         embed_collision = False,
+        embed_elem_group=False,
         binned_targs: bool = True,
         encode_forms: bool = False,
         add_hs: bool = False,
         sk_tau: float = 0.01,
         contr_weight: float = 1.,
+        ppm_tol: float = 20,
         **kwargs,
     ):
         super().__init__()
@@ -55,6 +58,7 @@ class IntenGNN(pl.LightningModule):
         self.inject_early = inject_early
         self.embed_adduct = embed_adduct
         self.embed_collision = embed_collision
+        self.embed_elem_group = embed_elem_group
         self.binned_targs = binned_targs
         self.encode_forms = encode_forms
         self.add_hs = add_hs
@@ -62,7 +66,7 @@ class IntenGNN(pl.LightningModule):
         self.contr_weight = contr_weight
 
         self.tree_processor = dag_data.TreeProcessor(
-            root_encode=root_encode, pe_embed_k=pe_embed_k, add_hs=add_hs
+            root_encode=root_encode, pe_embed_k=pe_embed_k, add_hs=add_hs, embed_elem_group=self.embed_elem_group,
         )
 
         self.formula_in_dim = 0
@@ -103,10 +107,21 @@ class IntenGNN(pl.LightningModule):
         adduct_shift = 0
         if self.embed_adduct:
             adduct_types = len(set(common.ion2onehot_pos.values()))
-            onehot = torch.eye(adduct_types)
-            self.adduct_embedder = nn.Parameter(onehot.float())
-            self.adduct_embedder.requires_grad = False
-            adduct_shift = adduct_types
+            onehot_types = torch.eye(adduct_types)
+            if self.embed_elem_group:
+                adduct_modes = len(set([j for i in common.ion_pos2extra_multihot.values() for j in i]))
+                multihot_modes = torch.zeros((adduct_types, adduct_modes))
+                for i in range(adduct_types):
+                    for j in common.ion_pos2extra_multihot[i]:
+                        multihot_modes[i, j] = 1
+                adduct_embedder = torch.cat((onehot_types, multihot_modes), dim=-1)
+                self.adduct_embedder = nn.Parameter(adduct_embedder.float())
+                self.adduct_embedder.requires_grad = False
+                adduct_shift = adduct_types + adduct_modes
+            else:
+                self.adduct_embedder = nn.Parameter(onehot_types.float())
+                self.adduct_embedder.requires_grad = False
+                adduct_shift = adduct_types
 
         collision_shift = 0
         if self.embed_collision:
@@ -188,14 +203,20 @@ class IntenGNN(pl.LightningModule):
         )
         self.trans_layers = nn_utils.get_clones(trans_layer, self.frag_set_layers)
 
+        self.ppm_tol = ppm_tol
+        self.mass_tol = self.ppm_tol * 1e-6
         self.loss_fn_name = loss_fn
-        if loss_fn == "mse":
-            raise NotImplementedError()
-        elif loss_fn == "cosine":
+        if loss_fn == "cosine":
             self.loss_fn = self.cos_loss
             self.cos_fn = nn.CosineSimilarity()
             self.output_activations = [nn.Sigmoid()]
             self.bce_fn = nn.BCELoss()
+        elif loss_fn == "entropy":
+            self.loss_fn = self.entropy_loss
+            self.output_activations = [nn.Sigmoid()]
+        elif loss_fn == "weighted_entropy":
+            self.loss_fn = functools.partial(self.entropy_loss, weighted=True)
+            self.output_activations = [nn.Sigmoid()]
         else:
             raise NotImplementedError()
 
@@ -230,7 +251,7 @@ class IntenGNN(pl.LightningModule):
             targ:
         """
         if not self.binned_targs:
-            tol = parent_mass * 1e-5  # 10ppm tolerance
+            tol = parent_mass * self.mass_tol
             mask = torch.logical_and(
                 torch.abs(pred[:, :, None, 0] - targ[:, None, :, 0]) < tol[:, None, None],
                 targ[:, None, :, 0] > 0
@@ -248,6 +269,64 @@ class IntenGNN(pl.LightningModule):
             loss = 1 - torch.sum(assign * score, dim=(1, 2))
         else:
             loss = 1 - self.cos_fn(pred, targ)
+        return {"loss": loss}
+
+    def entropy_loss(self, pred, targ, parent_mass=None, use_hun=False, weighted=False):
+        """entropy_loss.
+
+        Args:
+            pred:
+            targ:
+        """
+        def norm_peaks(prob):
+            return prob / (prob.sum(dim=-1, keepdim=True) + 1e-9)
+        def entropy(prob):
+            assert torch.all(torch.abs(prob.sum(dim=-1) - 1) < 1e-3)
+            return -torch.sum(prob * torch.log(prob + 1e-9), dim=-1)
+
+        if not self.binned_targs:
+            if weighted:
+                raise NotImplementedError
+            tol = parent_mass * self.mass_tol
+            mask = torch.logical_and(
+                torch.abs(pred[:, :, None, 0] - targ[:, None, :, 0]) < tol[:, None, None],
+                targ[:, None, :, 0] > 0
+            )
+            score = pred[:, :, None, 1] * targ[:, None, :, 1]
+            score = torch.where(mask, score, torch.zeros_like(score))
+            target_nums = torch.sum(targ[:, :, 1] != 0, dim=-1)
+            if use_hun:
+                assign = pygm.hungarian(score, n2=target_nums, backend='pytorch')
+            else:
+                _score = torch.where(mask, score, torch.full_like(score, -1e3))
+                assign = pygm.sinkhorn(_score, n2=target_nums, tau=self.sk_tau, dummy_row=True, max_iter=20, backend='pytorch')
+            pred_norm = norm_peaks(pred[:, :, 1])
+            targ_norm = norm_peaks(targ[:, :, 1])
+            merged_peaks = torch.cat((
+                torch.bmm(assign, targ_norm.unsueeze(-1)).squeeze(-1) + pred_norm, # usually n_pred > n_targ
+                (1 - assign.sum(dim=1)) * targ_norm,
+            ), dim=1)
+            entropy_mix = entropy(merged_peaks)
+            entropy_pred = entropy(pred_norm)
+            entropy_targ = entropy(targ_norm)
+            loss = 2 * entropy_mix - entropy_pred - entropy_targ
+
+        else:
+            pred_norm = norm_peaks(pred)
+            targ_norm = norm_peaks(targ)
+            if weighted:
+                def reweight_spec(norm_spec):
+                    entropy_spec = entropy(norm_spec)
+                    weight = torch.where(entropy_spec < 3, 0.25 + 0.25 * entropy_spec, torch.ones_like(entropy_spec))
+                    weighted_spec = norm_spec ** weight.unsqueeze(-1)
+                    weighted_spec = norm_peaks(weighted_spec)
+                    return weighted_spec
+                pred_norm = reweight_spec(pred_norm)
+                targ_norm = reweight_spec(targ_norm)
+            entropy_pred = entropy(pred_norm)
+            entropy_targ = entropy(targ_norm)
+            entropy_mix = entropy((pred_norm + targ_norm) / 2)
+            loss = 2 * entropy_mix - entropy_pred - entropy_targ
         return {"loss": loss}
 
     def predict(
@@ -308,7 +387,7 @@ class IntenGNN(pl.LightningModule):
             frag_forms=frag_forms,
         )
 
-        if self.loss_fn_name not in ["mse", "cosine"]:
+        if self.loss_fn_name not in ["cosine", "entropy", "weighted_entropy"]:
             raise NotImplementedError()
 
         output = out["output"][
@@ -611,30 +690,33 @@ class IntenGNN(pl.LightningModule):
             pred_inten = pred_inten.reshape(pred_inten.shape[0], -1, 2)  # B x (Out * Mass shifts) x 2
         batch_size = len(batch["names"])
 
+        if name == 'train':
+            loss_fn = self.loss_fn
+        else:
+            loss_fn = functools.partial(self.loss_fn, use_hun=True)  # use hungarian in val and test
+
         if 'is_decoy' in batch and 'mol_num' in batch:  # data with decoys
             true_data_inds = batch["is_decoy"] == 0
             num_true_data = torch.sum(true_data_inds)
 
             # the real cosine loss
-            cos_loss = self.loss_fn(pred_inten[true_data_inds], batch["inten_targs"][true_data_inds],
-                                    parent_mass=batch["precursor_mzs"][true_data_inds],
-                                    use_hun=name != 'train' # use hungarian in val and test
+            cos_loss = loss_fn(pred_inten[true_data_inds], batch["inten_targs"][true_data_inds],
+                               parent_mass=batch["precursor_mzs"][true_data_inds]
             )['loss']
 
             # contrastive ranking loss cosine loss to decoys
-            decoy_cos_loss = self.loss_fn(pred_inten,
-                                          batch["inten_targs"][true_data_inds].repeat_interleave(batch['mol_num'], dim=0),
-                                          parent_mass=batch["precursor_mzs"],
-                                          use_hun=name != 'train' # use hungarian in val and test
+            decoy_cos_loss = loss_fn(pred_inten,
+                                     batch["inten_targs"][true_data_inds].repeat_interleave(batch['mol_num'], dim=0),
+                                     parent_mass=batch["precursor_mzs"]
             )['loss']
             split_end = torch.cumsum(batch['mol_num'], dim=0)
             split_start = split_end - batch['mol_num']
             decoy_cos_loss = [decoy_cos_loss[s:e] for s, e in zip(split_start, split_end)]
-            decoy_cos_loss = torch.nn.utils.rnn.pad_sequence(decoy_cos_loss, batch_first=True, padding_value=1) # cos_loss <=1 by definition
+            decoy_cos_loss = torch.nn.utils.rnn.pad_sequence(decoy_cos_loss, batch_first=True, padding_value=1) # cos_loss <=1 by definition TODO need to rethink for entropy loss
             decoy_cos_loss_sorted = torch.sort(decoy_cos_loss, dim=-1).values.detach()
             ranking_dist = torch.abs(decoy_cos_loss[:, :, None] - decoy_cos_loss_sorted[:, None, :])
             top1_prob = pygm.sinkhorn(-ranking_dist, n1=batch["mol_num"], n2=batch["mol_num"], tau=self.sk_tau, backend='pytorch')[:, 0, 0]
-            contr_loss = -torch.log(top1_prob) * ranking_dist[:, 0, 0] # masked ce loss
+            contr_loss = torch.relu(-torch.log(top1_prob + 0.5))  # shift & cut ce loss for probs > 0.5
 
             loss = {
                 "cos_loss": cos_loss,
@@ -642,9 +724,7 @@ class IntenGNN(pl.LightningModule):
                 "loss": cos_loss + contr_loss * self.contr_weight,
             }
         else:
-            loss = self.loss_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"],
-                                use_hun=name != 'train' # use hungarian in val and test
-            )
+            loss = loss_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])
         loss = {k: v.mean() for k, v in loss.items()}
         self.log(
             f"{name}_loss", loss["loss"].item(), batch_size=batch_size, on_epoch=True

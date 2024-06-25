@@ -9,6 +9,7 @@ from typing import List
 import json
 import copy
 import functools
+import random
 
 import numpy as np
 import pandas as pd
@@ -37,33 +38,26 @@ class TreeProcessor:
         root_encode: str = "gnn",
         binned_targs: bool = False,
         add_hs: bool = False,
+        embed_elem_group: bool = False,
     ):
         """ """
         self.pe_embed_k = pe_embed_k
         self.root_encode = root_encode
         self.binned_targs = binned_targs
         self.add_hs = add_hs
+        self.embed_elem_group = embed_elem_group
 
         # Hard coded bins (for now)
         self.bins = np.linspace(0, 1500, 15000)
 
-    def featurize_frag(
+    def get_frag_info(
         self,
         frag: int,
         engine: fragmentation.FragmentEngine,
-        add_random_walk: bool = False,
-    ) -> False:
-        """featurize_frag.
-
-        Prev.  dgl_from_frag
-
-        """
-
+    ):
         num_atoms = engine.natoms
-        atom_symbols = engine.atom_symbols
         # Need to find all kept atoms and all kept bonds between
         kept_atom_inds, kept_atom_symbols = engine.get_present_atoms(frag)
-        kept_bond_orders, kept_bonds = engine.get_present_edges(frag)
 
         # H count
         form = engine.formula_from_kept_inds(kept_atom_inds)
@@ -79,6 +73,31 @@ class TreeProcessor:
         # Keep new_to_old for autoregressive predictions
         new_to_old = np.zeros(num_kept, dtype=int)
         new_to_old[new_inds] = old_inds
+
+        return {
+            "new_to_old": new_to_old,
+            "old_to_new": old_to_new,
+            "form": form,
+        }
+
+
+    def featurize_frag(
+        self,
+        frag: int,
+        engine: fragmentation.FragmentEngine,
+        add_random_walk: bool = False,
+    ) -> False:
+        """featurize_frag.
+
+        Prev.  dgl_from_frag
+
+        """
+        kept_atom_inds, kept_atom_symbols = engine.get_present_atoms(frag)
+        atom_symbols = engine.atom_symbols
+        kept_bond_orders, kept_bonds = engine.get_present_edges(frag)
+
+        info = self.get_frag_info(frag, engine)
+        old_to_new = info['old_to_new']
 
         # Remap new bond inds
         new_bond_inds = np.empty((0, 2), dtype=int)
@@ -96,16 +115,17 @@ class TreeProcessor:
             h_adds=h_adds,
             bond_inds=new_bond_inds,
             bond_types=np.array(kept_bond_orders),
+            embed_elem_group=self.embed_elem_group,
         )
 
         if add_random_walk:
             self.add_pe_embed(graph)
-        return {
+
+        frag_feature_dict = {
             "graph": graph,
-            "new_to_old": new_to_old,
-            "old_to_new": old_to_new,
-            "form": form,
         }
+        frag_feature_dict.update(info)
+        return frag_feature_dict
 
     def _convert_to_dgl(
         self,
@@ -333,6 +353,7 @@ class TreeProcessor:
         h_adds: np.ndarray,
         bond_inds: np.ndarray,
         bond_types: np.ndarray,
+        embed_elem_group: bool,
     ):
         """dgl_featurize.
 
@@ -341,6 +362,7 @@ class TreeProcessor:
             h_adds (np.ndarray): h_adds
             bond_inds (np.ndarray): bond_inds
             bond_types (np.ndarray)
+            embed_elem_group (bool): embed the element group in the periodic table
         """
         node_types = [common.element_to_position[el] for el in atom_symbols]
         node_types = np.vstack(node_types)
@@ -356,6 +378,11 @@ class TreeProcessor:
 
         bond_types_onehot = bond_featurizer[bond_types.long()]
         node_data = torch.from_numpy(node_types)
+
+        if embed_elem_group:
+            node_groups = [common.element_to_group[el] for el in atom_symbols]
+            node_groups = np.vstack(node_groups)
+            node_data = torch.hstack([node_data, torch.from_numpy(node_groups)])
 
         # H data is defined, add that
         if h_adds is None:
@@ -373,7 +400,10 @@ class TreeProcessor:
         return g
 
     def get_node_feats(self):
-        return self.pe_embed_k + common.ELEMENT_DIM + common.MAX_H
+        if self.embed_elem_group:
+            return self.pe_embed_k + common.ELEMENT_DIM + common.MAX_H + common.ELEMENT_GROUP_DIM
+        else:
+            return self.pe_embed_k + common.ELEMENT_DIM + common.MAX_H
 
 
 class DAGDataset(Dataset):
@@ -433,8 +463,6 @@ class DAGDataset(Dataset):
                     read_fn,
                     max_cpu=self.num_workers,
                     chunks=min(len(self.spec_names) // 4, 50),
-                    timeout=1200,
-                    use_ray=use_ray,
                 )
                 self.trees = [i["tree"] for i in tree_outs]
                 self.dgl_trees = [i["dgl_tree"] for i in tree_outs]
@@ -706,6 +734,171 @@ class IntenDataset(DAGDataset):
             "frag_form_vecs": form_vecs,
         }
         return output
+
+
+class IntenContrDataset(DAGDataset):
+    """Intensity Constrastive Dataset."""
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        tree_processor: TreeProcessor,
+        magma_h5: Path,
+        magma_map: dict,
+        num_workers=0,
+        use_ray: bool = False,
+        num_decoys: int = 7,
+        gen_checkpoint: str = 'results/dag_nist20/split_1_rnd1/version_0/best.ckpt',
+        decoy_gen: str = 'mutation',
+        **kwargs,
+    ):
+        """__init__.
+
+        Args:
+        """
+        from foam.opt_graph_ga_fc.mutate import mutate
+        import ms_pred.dag_pred.gen_model as gen_model
+
+        self.tree_processor = tree_processor
+        self.read_tree = self.tree_processor.process_tree_inten
+        super().__init__(
+            df=df,
+            magma_h5=magma_h5,
+            magma_map=magma_map,
+            num_workers=num_workers,
+            use_ray=use_ray,
+        )
+        self.decoy_gen = decoy_gen
+        self.mutate = functools.partial(mutate, mutation_rate=1)
+        self.h5path = '/home/runzhong/foam/data/pubchem/pubchem_formulae_inchikey.hdf5'
+        self.num_decoys = num_decoys
+        self.gen_model = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint, map_location="cpu")
+        self.gen_model.eval()
+        self.gen_model.freeze()
+        self.gen_model_threshold = 0
+        self.gen_model_maxnodes = 100
+
+    @classmethod
+    def get_collate_fn(cls):
+        return IntenContrDataset.collate_fn
+
+    @staticmethod
+    def collate_fn(
+        input_list,
+    ):
+        """collate_fn.
+
+        Batch a list of graphs and convert.
+
+        Should return dict containing:
+            1. Vector of names.
+            2. Batched root graphs
+            3. Batched fragment graphs
+            5. Number of atoms per frag graph
+            6. Conversion mapping indices between root and children
+            7. Inten targets
+            8. Num broken bonds per atom
+            9. Num frags in each mols dag
+
+        """
+        input_list_flatten = [i for j in input_list for i in j]
+        output = IntenDataset.collate_fn(input_list_flatten)
+        is_decoy = torch.LongTensor([i['decoy'] for j in input_list for i in j])
+        mol_num = torch.LongTensor([len(i) for i in input_list])  # number of true mol + number of decoys
+
+        decoy_output = {
+            "is_decoy": is_decoy,
+            "mol_num": mol_num,
+        }
+        output.update(decoy_output)
+
+        return output
+
+    def __getitem__(self, idx: int):
+        name = self.spec_names[idx]
+        adduct = self.name_to_adducts[name]
+        precursor = self.name_to_precursors[name]
+        dataset_smi = self.name_to_smiles[name]
+        dataset_inchikey = common.inchikey_from_smiles(dataset_smi)
+        dataset_formula = common.form_from_smi(dataset_smi)
+
+        dgl_entry = self.read_fn(name)["dgl_tree"]
+        colli_eng = dgl_entry['collision_energy']
+        outdict = {"name": name, "adduct": adduct, "precursor": precursor, 'smiles': dataset_smi, 'decoy': 0}
+
+        # Convert this into a list of graphs with a list of targets
+        outdict.update(dgl_entry)
+
+        outlist = [outdict]
+
+        # cand_str = self.h5obj.read_str(dataset_formula)
+        # smi_inchi_list = json.loads(cand_str)
+
+        if self.decoy_gen == 'mutation':
+            decoy_mols = [self.mutate(Chem.MolFromSmiles(dataset_smi)) for _ in range(self.num_decoys)]
+        elif self.decoy_gen == 'pubchem':
+            h5obj = common.HDF5Dataset(self.h5path)
+            if dataset_formula in h5obj:
+                cand_str = h5obj.read_str(dataset_formula)
+                smi_inchi_list = json.loads(cand_str)
+                decoy_mols_and_inchikeys = random.choices(smi_inchi_list, k=self.num_decoys)
+                decoy_mols = [Chem.MolFromSmiles(_[0]) for _ in decoy_mols_and_inchikeys]
+            else:
+                decoy_mols = [self.mutate(Chem.MolFromSmiles(dataset_smi)) for _ in range(self.num_decoys)]
+        else:
+            raise NotImplementedError
+        decoy_mols = self.sanitize(decoy_mols)
+        decoy_smis = []
+        for mol in decoy_mols:
+            new_smi = Chem.MolToSmiles(mol)
+            if common.inchikey_from_smiles(new_smi) != dataset_inchikey:
+                decoy_smis.append(new_smi)
+
+        with torch.no_grad():
+            torch.set_num_threads(1)
+            for i, smi in enumerate(decoy_smis):
+                try:
+                    frag_preds = self.gen_model.predict_mol(
+                        smi,
+                        precursor_mz=precursor,
+                        collision_eng=float(colli_eng),
+                        adduct=adduct,
+                        threshold=self.gen_model_threshold,
+                        device="cpu",
+                        max_nodes=self.gen_model_maxnodes,
+                    )
+                    decoy_name = self.rm_collision(name) + f'_decoy {i}_collision {common.get_collision_energy(name)}'
+                    trees = self.tree_processor.process_tree_inten_pred({
+                        "root_inchi": Chem.MolToInchi(Chem.MolFromSmiles(smi)),
+                        "name": decoy_name,
+                        "frags": frag_preds,
+                        "collision_energy": float(colli_eng),
+                    })
+                    decoy_entry = trees['dgl_tree']
+                    decoy_entry.update(
+                        {"name": decoy_name, "adduct": adduct, "precursor": precursor, "collision_energy": colli_eng,
+                         "smiles": smi, "decoy": 1})
+                    outlist.append(decoy_entry)
+                except RuntimeError as err:
+                    print(err)
+
+        return outlist
+
+    @staticmethod
+    def sanitize(mol_list: List[Chem.Mol]) -> List[Chem.Mol]:
+        """sanitize.py"""
+        new_mol_list = []
+        smiles_set = set()
+        for mol in mol_list:
+            if mol is not None:
+                try:
+                    smiles = Chem.MolToSmiles(mol)
+                    if smiles is not None and smiles not in smiles_set:
+                        smiles_set.add(smiles)
+                        new_mol_list.append(mol)
+                except ValueError:
+                    logging.warning(f"Bad smiles")
+        return new_mol_list
 
 
 class IntenPredDataset(DAGDataset):

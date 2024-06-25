@@ -63,6 +63,7 @@ def add_frag_train_args(parser):
     parser.add_argument("--pool-op", default="avg", action="store")
     parser.add_argument("--grad-accumulate", default=1, type=int, action="store")
     parser.add_argument("--sk-tau", default=0.01, action="store", type=float)
+    parser.add_argument("--ppm-tol", default=20, action="store", type=float)
     parser.add_argument(
         "--mpnn-type", default="GGNN", action="store", choices=["GGNN", "GINE", "PNA"]
     )
@@ -70,7 +71,7 @@ def add_frag_train_args(parser):
         "--loss-fn",
         default="cosine",
         action="store",
-        choices=["mse", "cosine"],
+        choices=["cosine", "entropy", "weighted_entropy"],
     )
     parser.add_argument(
         "--root-encode",
@@ -83,6 +84,7 @@ def add_frag_train_args(parser):
     parser.add_argument("--binned-targs", default=False, action="store_true")
     parser.add_argument("--embed-adduct", default=False, action="store_true")
     parser.add_argument("--embed-collision", default=False, action="store_true")
+    parser.add_argument("--embed-elem-group", default=False, action="store_true")
     parser.add_argument("--encode-forms", default=False, action="store_true")
     parser.add_argument("--add-hs", default=False, action="store_true")
 
@@ -142,11 +144,13 @@ def train_model():
     pe_embed_k = kwargs["pe_embed_k"]
     root_encode = kwargs["root_encode"]
     binned_targs = kwargs["binned_targs"]
+    embed_elem_group = kwargs["embed_elem_group"]
     tree_processor = dag_data.TreeProcessor(
         pe_embed_k=pe_embed_k,
         root_encode=root_encode,
         binned_targs=binned_targs,
         add_hs=add_hs,
+        embed_elem_group = embed_elem_group,
     )
 
     # Build out frag datasets
@@ -231,10 +235,12 @@ def train_model():
         inject_early=kwargs["inject_early"],
         embed_adduct=kwargs["embed_adduct"],
         embed_collision=kwargs["embed_collision"],
+        embed_elem_group=kwargs["embed_elem_group"],
         binned_targs=binned_targs,
         encode_forms=kwargs["encode_forms"],
         add_hs=add_hs,
         sk_tau=kwargs["sk_tau"],
+        ppm_tol=kwargs["ppm_tol"],
     )
 
     # test_batch = next(iter(train_loader))

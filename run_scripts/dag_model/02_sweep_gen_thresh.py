@@ -4,8 +4,11 @@ import pandas as pd
 from pathlib import Path
 import subprocess
 
+batch_size = 8
+list_devices = [0, 1]
+gpu_workers = len(list_devices) * 2
 workers = 32
-devices = ",".join([])
+devices = ",".join([str(_) for _ in list_devices])
 python_file = "src/ms_pred/dag_pred/predict_gen.py"
 max_nodes = [10, 20, 30, 40, 50, 100, 200, 300, 500, 1000]
 subform_name = "magma_subform_50.hdf5"
@@ -64,7 +67,7 @@ for res_entry in res_entries:
             save_dir_temp.mkdir(exist_ok=True)
 
             cmd = f"""python {python_file} \\
-            --batch-size {workers} \\
+            --batch-size {batch_size} \\
             --dataset-name  {dataset} \\
             --split-name {split}.tsv \\
             --subset-datasets test_only  \\
@@ -72,6 +75,8 @@ for res_entry in res_entries:
             --save-dir {save_dir_temp} \\
             --threshold 0  \\
             --max-nodes {max_node} \\
+            --num-workers {gpu_workers} \\
+            --gpu
             """
 
             pred_dir_folders.append(save_dir_temp)

@@ -283,36 +283,13 @@ def main(
                 if log is not None:
                     log.write(cmd_str + "\n")
         elif launch_method == "local_parallel":
-
-            # Parallelize to several gpus
+            from ms_pred import common
             vis_devices = launcher_args.get("visible_devices", None)
             if vis_devices is None:
                 raise ValueError()
-
-            sh_run_files = set()
-            for str_num, cmd_str in enumerate(scripts_to_run):
-                gpu_num = str_num % len(vis_devices)
-                gpu = vis_devices[gpu_num]
-                cmd_str_new = f"CUDA_VISIBLE_DEVICES={gpu} {cmd_str}"
-                output_name = (
-                    f"{launcher_path.parent / launcher_path.stem}_python_{gpu_num}.sh"
-                )
-
-                with open(output_name, "a") as fp:
-                    fp.write(f"{cmd_str_new}\n")
-                sh_run_files.add(output_name)
-
-            # Single file to run alll launch scripts
-            launch_all = f"{launcher_path.parent / launcher_path.stem}_launch_all.sh"
-            logdir = Path(launch_all).parent / "logs"
-            logdir.mkdir(exist_ok=True, parents=True)
-            with open(launch_all, "w") as fp:
-                temp_str = [
-                    f"sh {i} > {logdir / Path(i).name}.log &" for i in list(sh_run_files)
-                ]
-                fp.write("\n".join(temp_str))
-            print(f"Runnings script: {launch_all}")
-            subprocess.call(f"sh {launch_all}", shell=True)
+            else:  # Parallelize to several gpus
+                max_parallel = launcher_args.get("max_parallel_per_gpu", 1)
+                common.subprocess_parallel(scripts_to_run, max_parallel, gpus=vis_devices)
         else:
             raise NotImplementedError()
 

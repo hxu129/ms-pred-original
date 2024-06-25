@@ -32,6 +32,7 @@ class HDF5Dataset:
     def __init__(self, path, mode="r"):
         self.path = path
         self.h5_obj = h5py.File(path, mode=mode)
+        self.attrs = self.h5_obj.attrs
 
     def __getitem__(self, idx):
         return self.h5_obj[idx]
@@ -45,15 +46,25 @@ class HDF5Dataset:
     def get_all_names(self):
         return self.h5_obj.keys()
 
-    def read_str(self, name, encoding='utf-8'):
-        str_obj = self.h5_obj[name][0]
+    def read_str(self, name, encoding='utf-8') -> str:
+        if '/' in name:  # has group
+            groupname, name = name.rsplit('/', 1)
+            grp = self.h5_obj[groupname]
+        else:
+            grp = self.h5_obj
+        str_obj = grp[name][0]
         if type(str_obj) is not bytes:
             raise TypeError(f'Wrong type of {name}')
         return str_obj.decode(encoding)
 
     def write_str(self, name, data):
+        if '/' in name:  # has group
+            groupname, name = name.rsplit('/', 1)
+            grp = self.h5_obj.require_group(groupname)
+        else:
+            grp = self.h5_obj
         dt = h5py.special_dtype(vlen=str)
-        ds = self.h5_obj.create_dataset(name, (1,), dtype=dt)
+        ds = grp.create_dataset(name, (1,), dtype=dt, compression="gzip")
         ds[0] = data
 
     def write_dict(self, dict):
@@ -68,6 +79,24 @@ class HDF5Dataset:
                 continue
             self.write_str(tup[0], tup[1])
 
+    def read_data(self, name) -> np.ndarray:
+        """read a numpy array object"""
+        return self.h5_obj[name][:]
+
+    def write_data(self, name, data):
+        """write a numpy array object"""
+        self.h5_obj.create_dataset(name, data=data)
+
+    def read_attr(self, name) -> dict:
+        """read attribute of name as a dict"""
+        return {k: v for k, v in self.h5_obj[name].attrs.items()}
+
+    def update_attr(self, name, inp_dict):
+        """write inp_dict to name's attribute"""
+        cur_obj = self.h5_obj[name].attrs
+        for k, v in inp_dict.items():
+            cur_obj[k] = v
+
     def close(self):
         self.h5_obj.close()
 
@@ -75,7 +104,7 @@ class HDF5Dataset:
         self.h5_obj.flush()
 
 
-def setup_logger(save_dir, log_name="output.log", debug=False):
+def setup_logger(save_dir, log_name="output.log", debug=False, custom_label=""):
     """Create output directory"""
     save_dir = Path(save_dir)
     save_dir.mkdir(exist_ok=True, parents=True)
@@ -96,7 +125,7 @@ def setup_logger(save_dir, log_name="output.log", debug=False):
     # Define basic logger
     logging.basicConfig(
         level=level,
-        format="%(asctime)s %(levelname)s: %(message)s",
+        format=custom_label + "%(asctime)s %(levelname)s: %(message)s",
         handlers=[
             stream_handler,
             file_handler,
@@ -109,6 +138,7 @@ def setup_logger(save_dir, log_name="output.log", debug=False):
     # configure logging on module level, redirect to file
     logger = logging.getLogger("pytorch_lightning.core")
     logger.addHandler(logging.FileHandler(log_file))
+
 
 
 class ConsoleLogger(Logger):
@@ -614,18 +644,20 @@ def build_mgf_str(
     return full_out
 
 
-def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title=''):
-    fig = plt.figure(figsize=(10, 7), dpi=300)
+def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title='', dpi=300, ppm=20):
+    fig = plt.figure(figsize=(10, 7), dpi=dpi)
     largest_mz = 0
     for idx, spec in enumerate((spec1, spec2)):
         spec = np.array(spec).astype(np.float64)
         spec[:, 1] = spec[:, 1] / spec[:, 1].max()
-        spec[:, 1] = np.sqrt(spec[:, 1])
+        # spec[:, 1] = np.sqrt(spec[:, 1])
         spec = spec[spec[:, 1] > 0.01]
         largest_mz = max(largest_mz, spec[:, 0].max())
         intensity_arr = spec[:, 1] if idx == 0 else -spec[:, 1]
         for mz, inten in zip(spec[:, 0], intensity_arr):
-            markerline, stemlines, baseline = plt.stem(mz, inten, 'g' if mz in spec1[:, 0] and mz in spec2[:, 0] else 'k', markerfmt=" ")
+            mz_in_spec1 = np.min(np.abs(mz - spec1[:, 0])) / mz < 1e-6 * ppm
+            mz_in_spec2 = np.min(np.abs(mz - spec2[:, 0])) / mz < 1e-6 * ppm
+            markerline, stemlines, baseline = plt.stem(mz, inten, 'g' if mz_in_spec1 and mz_in_spec2 else 'k', markerfmt=" ")
             plt.setp(stemlines, 'linewidth', 0.5)
 
     plt.axhline(y=0, color='k', linestyle='-')

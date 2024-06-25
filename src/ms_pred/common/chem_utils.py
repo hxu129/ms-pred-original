@@ -4,6 +4,8 @@ import re
 import numpy as np
 import pandas as pd
 from functools import reduce
+from typing import List
+import logging
 
 import torch
 from rdkit import Chem
@@ -40,6 +42,28 @@ VALID_ELEMENTS = [
     "K",
 ]
 
+ELEMENT_TO_GROUP = {
+    "C": 4,  # group 5
+    "N": 3,  # group 4
+    "P": 3,
+    "O": 5,  # group 6
+    "S": 5,
+    "Si": 4,
+    "I": 6,  # group 7 / halogens
+    "H": 0,
+    "Cl": 6,
+    "F": 6,
+    "Br": 6,
+    "B": 2,  # group 3
+    "Se": 5,
+    "Fe": 7,  # transition metals
+    "Co": 7,
+    "As": 3,
+    "Na": 1,  # alkali metals
+    "K": 1,
+}
+ELEMENT_GROUP_DIM = len(set(ELEMENT_TO_GROUP.values()))
+ELEMENT_GROUP_VECTORS = np.eye(ELEMENT_GROUP_DIM)
 
 # Set the exact molecular weight?
 # Use this to define an element priority queue
@@ -91,6 +115,7 @@ MAX_H = 6
 element_to_ind = dict(zip(VALID_ELEMENTS, np.arange(len(VALID_ELEMENTS))))
 element_to_position = dict(zip(VALID_ELEMENTS, ELEMENT_VECTORS))
 element_to_position_mass = dict(zip(VALID_ELEMENTS, ELEMENT_VECTORS_MASS))
+element_to_group = {k: ELEMENT_GROUP_VECTORS[v] for k, v in ELEMENT_TO_GROUP.items()}
 
 # Map ion to adduct mass, don't use electron
 ion2mass = {
@@ -144,6 +169,43 @@ ion2onehot_pos = {
     "[M-H-H2O]-": 9,
     "[M-H-CO2]-": 10,
 }
+
+ion_pos2extra_multihot = {v: set() for v in ion2onehot_pos.values()}
+for k, v in ion2onehot_pos.items():
+    _ion_mode = k[-1]  # '+' or '-'
+    k = k.strip(_ion_mode).strip('[M').strip(']')
+
+    # split string into a list formula differences
+    _ions = []
+    for _, i in enumerate(k.split('+')):
+        if i:
+            if _ != 0:
+                i = '+' + i
+            for __, j in enumerate(i.split('-')):
+                if j:
+                    if __ == 0:
+                        _ions.append(j)
+                    else:
+                        _ions.append('-' + j)
+
+    if _ion_mode == '+':
+        ion_pos2extra_multihot[v].add(0)  # positive mode
+    else:
+        ion_pos2extra_multihot[v].add(1)  # negative mode
+    if '+Na' in _ions or '+K' in _ions:
+        ion_pos2extra_multihot[v].add(2)  # alkali metal
+    if '+H' in _ions:
+        ion_pos2extra_multihot[v].add(3)  # add proton
+    if '-H' in _ions:
+        ion_pos2extra_multihot[v].add(4)  # lose proton
+    if '+Cl' in _ions:
+        ion_pos2extra_multihot[v].add(5)  # halogen
+    if '-H2O' in _ions or '-H4O2' in _ions or '-2H2O' in _ions:
+        ion_pos2extra_multihot[v].add(6)  # lose water
+    if '-CO2' in _ions:
+        ion_pos2extra_multihot[v].add(7)  # lose CO2
+    if '+NH3' in _ions:
+        ion_pos2extra_multihot[v].add(8)  # get NH3
 
 # add equivalent keys: [M]1+ == [M]+, [NH3] == [H3N]
 _ori_ions = list(ion2mass.keys())
@@ -533,3 +595,26 @@ def get_collision_energy(filename):
     else:
         colli_eng = 'nan'
     return colli_eng
+
+
+def sanitize(mol_list: List[Chem.Mol]) -> List[Chem.Mol]:
+    """sanitize a list of mols"""
+    new_mol_list = []
+    for mol in mol_list:
+        if mol is not None:
+            try:
+                inchi = Chem.MolToInchi(mol)
+                mol = Chem.MolFromInchi(inchi)
+                if mol is None:
+                    continue
+                smiles = Chem.MolToSmiles(mol)
+                mol = Chem.MolFromSmiles(smiles)
+                if mol is None:
+                    continue
+                inchi = Chem.MolToInchi(mol)
+                mol = Chem.MolFromInchi(inchi)
+                if mol is not None:
+                    new_mol_list.append(mol)
+            except ValueError:
+                logging.warning(f"Bad smiles")
+    return new_mol_list

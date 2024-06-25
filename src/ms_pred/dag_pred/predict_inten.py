@@ -9,8 +9,6 @@ from datetime import datetime
 import yaml
 import argparse
 import pickle
-import copy
-import json
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -106,13 +104,14 @@ def predict():
     pe_embed_k = model.pe_embed_k
     root_encode = model.root_encode
     add_hs = model.add_hs
+    embed_elem_group = model.embed_elem_group
     magma_dag_folder = Path(kwargs["magma_dag_folder"])
     magma_tree_h5 = common.HDF5Dataset(magma_dag_folder)
     name_to_json = {Path(i).stem.replace("pred_", ""): i for i in magma_tree_h5.get_all_names()}
     num_workers = kwargs.get("num_workers", 0)
 
     tree_processor = dag_data.TreeProcessor(
-        pe_embed_k=pe_embed_k, root_encode=root_encode, add_hs=add_hs
+        pe_embed_k=pe_embed_k, root_encode=root_encode, add_hs=add_hs, embed_elem_group=embed_elem_group,
     )
     pred_dataset = dag_data.IntenPredDataset(
         df,

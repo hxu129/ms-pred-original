@@ -98,7 +98,7 @@ def main(args):
         spec_dir=data_folder,
     )
     true_specs = common.chunked_parallel(
-        pred_spec_names, read_spec, chunks=100, max_cpu=16, timeout=4000, max_retries=3
+        pred_spec_names, read_spec, chunks=100, max_cpu=16
     )
     running_lists = defaultdict(lambda: [])
     output_entries = []

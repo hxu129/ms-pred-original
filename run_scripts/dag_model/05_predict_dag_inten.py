@@ -14,7 +14,7 @@ test_entries = [
     {"dataset": "nist20", "split": "split_1", "folder": "split_1_rnd3"},
     {"dataset": "canopus_train_public", "split": "split_1", "folder": "split_1_rnd3"},
 ]
-devices = ",".join(["1"])
+devices = ",".join(["0", "1"])
 
 for test_entry in test_entries:
     split = test_entry['split']
