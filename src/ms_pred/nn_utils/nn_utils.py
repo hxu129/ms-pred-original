@@ -825,35 +825,6 @@ def random_walk_pe(g, k, eweight_name=None):
 
     return pe
 
-    device = g.device
-    N = g.num_nodes()  # number of nodes
-    M = g.num_edges()  # number of edges
-    A = g.adj().to(device)  # adjacency matrix
-    if eweight_name is not None:
-        # add edge weights if required
-        W = torch.sparse_coo_tensor(
-            indices=torch.stack(g.find_edges(list(range(M)))).to(device),
-            values=g.edata[eweight_name].squeeze().to(device),
-            size=(N, N),
-        )
-        A = A.multiply(W)
-    A = torch_sparse.SparseTensor.from_torch_sparse_coo_tensor(A)
-    D_inv = torch_sparse.SparseTensor(
-        row=torch.arange(N).to(device),
-        col=torch.arange(N).to(device),
-        value=(1 / A.sum(1) + 1e-30)
-    )
-    RW = A.spspmm(D_inv)  # 1-step transition probability
-
-    # Iterate for k steps
-    PE = [RW.get_diag()]
-    RW_power = RW
-    for _ in range(k - 1):
-        RW_power = RW_power.spspmm(RW)
-        PE.append(RW_power.get_diag())
-    PE = dgl_F.stack(PE, dim=-1)
-    return PE
-
 
 def split_dgl_batch(batch: dgl.DGLGraph, max_dgl_edges, frag_hashes, rev_idx, frag_form_vecs):
     if batch.num_edges() > max_dgl_edges and batch.batch_size > 1:
