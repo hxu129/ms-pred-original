@@ -148,7 +148,6 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
 
         elif func == "emd":
             bins = np.linspace(0, 1500, 15000, dtype=np.float64)
-            # there needs to be the same "mass" aka amount of intensity, so first normalize both intensities
             def norm_peaks(prob):
                 return prob / (prob.sum(axis=-1, keepdims=True) + 1e-9)
             norm_pred = norm_peaks(pred_specs)
