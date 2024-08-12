@@ -146,10 +146,25 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
             entropy_mix = entropy((norm_pred + norm_true) / 2)
             dist.append(2 * entropy_mix - entropy_pred - entropy_targ)
 
+        elif func == "emd":
+            bins = np.linspace(0, 1500, 15000, dtype=np.float64)
+            # there needs to be the same "mass" aka amount of intensity, so first normalize both intensities
+            def norm_peaks(prob):
+                return prob / (prob.sum(axis=-1, keepdims=True) + 1e-9)
+            norm_pred = norm_peaks(pred_specs)
+            norm_true = norm_peaks(true_spec)
+
+            # closed form for 1-d 1-Wasserstein distance
+            # reciprocal to turn distance into similarity
+            emd =  1/ (np.abs(np.cumsum(norm_pred, axis=-1) - np.cumsum(norm_true)) @ np.diff(bins, append=15000))
+            dist.append(emd)
+
+
     dist = np.array(dist)  # num of colli energy x number of candidates
     #weights = np.clip(np.log((np.array(true_npeaks) - 1) / 10 + 1), a_min=0, a_max=None)  # value of colli energy
     weights = np.ones(dist.shape[0])
     weights = weights / weights.sum()
+
 
     return np.sum(dist * weights[:, None], axis=0)  # number of candidates
 
