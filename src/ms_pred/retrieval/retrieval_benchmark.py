@@ -9,6 +9,7 @@ from collections import defaultdict
 from functools import partial
 from typing import Dict, List
 import copy
+import ot
 
 import pygmtools as pygm
 
@@ -144,7 +145,8 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
             entropy_pred = entropy(norm_pred)
             entropy_targ = entropy(norm_true)
             entropy_mix = entropy((norm_pred + norm_true) / 2)
-            dist.append(2 * entropy_mix - entropy_pred - entropy_targ)
+            spectral_entropy = 2 * entropy_mix - entropy_pred - entropy_targ
+            dist.append(spectral_entropy)
 
         elif func == "emd":
             bins = np.linspace(0, 1500, 15000, dtype=np.float64)
@@ -152,24 +154,39 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
                 return prob / (prob.sum(axis=-1, keepdims=True) + 1e-9)
             norm_pred = norm_peaks(pred_specs)
             norm_true = norm_peaks(true_spec)
-
-            # closed form for 1-d 1-Wasserstein distance
-            # reciprocal to turn distance into similarity
-            emd =  1/ (np.abs(np.cumsum(norm_pred, axis=-1) - np.cumsum(norm_true)) @ np.diff(bins, append=15000))
-            dist.append(emd)
+            emds = []
+            for i in tqdm(range(norm_pred.shape[0])):
+                # this takes 10 seconds
+                emd = ot.emd2_1d(x_a=bins, x_b=bins, a = norm_pred[i,:], b = norm_true)
+                # takes like 10 minutes..
+                # emd = ot.emd2(norm_pred[i,:], norm_true, np.abs(bins[:, None] - bins))
+                #emd = ot.sinkhorn2(norm_pred[i,: ], norm_true, np.abs(bins[:, None] - bins), reg=0)
+                # print(emd)
+                #print(np.abs(np.cumsum(norm_pred[i, :], axis=-1) - np.cumsum(norm_true)) @ np.diff(bins, append=15000))
+                emds.append(emd)
+            # closed form for 1p 1-d emd
+            # emd = np.abs(np.cumsum(norm_pred, axis=-1) - np.cumsum(norm_true)) @ np.diff(bins, append=15000)
+            
+            #emd = -np.exp(-emd) # top 3? # super small values? 
+            # emd = 1 - 1/emd # top 4, 0.85 to 1
+            # emd = np.log1p(emd)
+            # emd = np.tanh(emd)  # saturates everything, not good. 
+            # the relative distances end up making a difference below b/c of dot product!
+            dist.append(emds)
 
 
     dist = np.array(dist)  # num of colli energy x number of candidates
     #weights = np.clip(np.log((np.array(true_npeaks) - 1) / 10 + 1), a_min=0, a_max=None)  # value of colli energy
     weights = np.ones(dist.shape[0])
     weights = weights / weights.sum()
-
+    
 
     return np.sum(dist * weights[:, None], axis=0)  # number of candidates
 
 # define cosine/entropy functions
 cos_dist_bin = partial(dist_bin, func='cos')
 entropy_dist_bin = partial(dist_bin, func='entropy')
+emd_dist_bin = partial(dist_bin, func='emd')
 
 
 def cos_dist_hun(cand_preds_dict: List[Dict], true_spec_dict: dict, parent_mass: float, ignore_peak=False) -> np.ndarray:
