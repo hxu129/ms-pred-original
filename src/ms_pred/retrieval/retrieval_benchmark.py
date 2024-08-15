@@ -146,6 +146,7 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
             entropy_targ = entropy(norm_true)
             entropy_mix = entropy((norm_pred + norm_true) / 2)
             spectral_entropy = 2 * entropy_mix - entropy_pred - entropy_targ
+            
             dist.append(spectral_entropy)
 
         elif func == "emd":
@@ -157,9 +158,11 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
             emds = []
             for i in tqdm(range(norm_pred.shape[0])):
                 # this takes 10 seconds
-                emd = ot.emd2_1d(x_a=bins, x_b=bins, a = norm_pred[i,:], b = norm_true)
+                # TODO: figure out how one can incorporate the entropy weighting into matrix?
+                #emd = ot.emd2_1d(x_a=bins, x_b=bins, a = -norm_pred[i,:] * np.log(norm_pred[i,:]), 
+                #                                     b = -norm_true * np.log(norm_true), metric='sqeuclidean')
                 # takes like 10 minutes..
-                # emd = ot.emd2(norm_pred[i,:], norm_true, np.abs(bins[:, None] - bins))
+                emd = ot.emd2(norm_pred[i,:], norm_true, np.abs(bins[:, None] - bins))
                 #emd = ot.sinkhorn2(norm_pred[i,: ], norm_true, np.abs(bins[:, None] - bins), reg=0)
                 # print(emd)
                 #print(np.abs(np.cumsum(norm_pred[i, :], axis=-1) - np.cumsum(norm_true)) @ np.diff(bins, append=15000))
