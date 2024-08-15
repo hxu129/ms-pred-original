@@ -134,25 +134,23 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
             dist.append(1 - np.dot(pred_specs, true_spec) / (norm_pred * norm_true))
         elif func == 'entropy':
             def norm_peaks(prob):
-                return prob / (prob.sum(axis=-1, keepdims=True) + 1e-9)
+                return prob / (prob.sum(axis=-1, keepdims=True) + 1e-22)
 
             def entropy(prob):
                 assert np.all(np.abs(prob.sum(axis=-1) - 1) < 5e-3), f"Diff to 1: {np.max(np.abs(prob.sum(axis=-1) - 1))}"
-                return -np.sum(prob * np.log(prob + 1e-9), axis=-1)
+                return -np.sum(prob * np.log(prob + 1e-22), axis=-1)
 
             norm_pred = norm_peaks(pred_specs)
             norm_true = norm_peaks(true_spec)
             entropy_pred = entropy(norm_pred)
             entropy_targ = entropy(norm_true)
             entropy_mix = entropy((norm_pred + norm_true) / 2)
-            spectral_entropy = 2 * entropy_mix - entropy_pred - entropy_targ
-            
-            dist.append(spectral_entropy)
+            dist.append((2 * entropy_mix - entropy_pred - entropy_targ) / np.log(4))
 
         elif func == "emd":
             bins = np.linspace(0, 1500, 15000, dtype=np.float64)
             def norm_peaks(prob):
-                return prob / (prob.sum(axis=-1, keepdims=True) + 1e-9)
+                return prob / (prob.sum(axis=-1, keepdims=True) + 1e-22)
             norm_pred = norm_peaks(pred_specs)
             norm_true = norm_peaks(true_spec)
             emds = []
@@ -169,20 +167,19 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
                 emds.append(emd)
             # closed form for 1p 1-d emd
             # emd = np.abs(np.cumsum(norm_pred, axis=-1) - np.cumsum(norm_true)) @ np.diff(bins, append=15000)
-            
-            #emd = -np.exp(-emd) # top 3? # super small values? 
+
+            #emd = -np.exp(-emd) # top 3? # super small values?
             # emd = 1 - 1/emd # top 4, 0.85 to 1
             # emd = np.log1p(emd)
-            # emd = np.tanh(emd)  # saturates everything, not good. 
+            # emd = np.tanh(emd)  # saturates everything, not good.
             # the relative distances end up making a difference below b/c of dot product!
             dist.append(emds)
 
 
     dist = np.array(dist)  # num of colli energy x number of candidates
-    #weights = np.clip(np.log((np.array(true_npeaks) - 1) / 10 + 1), a_min=0, a_max=None)  # value of colli energy
-    weights = np.ones(dist.shape[0])
+    weights = (np.array(true_npeaks) >= 5) * 3 + 1  # if >=5 peaks: weight=4, else: weight=1
+    # weights = np.ones(dist.shape[0])
     weights = weights / weights.sum()
-    
 
     return np.sum(dist * weights[:, None], axis=0)  # number of candidates
 
