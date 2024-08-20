@@ -7,9 +7,19 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch_sparse
 import torch_scatter
 import dgl
+from packaging.version import Version
+
+if Version(torch.__version__) > Version('2.0.0'):
+    _TORCH_SP_SUPPORT = True  # use torch built-in sparse
+else:
+    try:
+        import torch_sparse
+        _TORCH_SP_SUPPORT = False  # use torch_sparse package
+    except:
+        raise ModuleNotFoundError("Please either install torch_sparse or upgrade to a PyTorch version that supports "
+                                  "sparse-sparse matrix multiply")
 
 from dgl.backend import pytorch as dgl_F
 import ms_pred.nn_utils.dgl_modules as dgl_mods
@@ -807,12 +817,22 @@ def random_walk_pe(g, k, eweight_name=None):
         adj = torch.zeros((N, N), device=row.device)
         adj[row, col] = value
         loop_index = torch.arange(N, device=row.device)
+    elif _TORCH_SP_SUPPORT:
+        adj = torch.sparse_coo_tensor(indices=torch.stack((row, col)), values=value, size=(N, N))
     else:
         adj = torch_sparse.SparseTensor(row=row, col=col, value=value, sparse_sizes=(N, N))
 
     def get_pe(out: torch.Tensor) -> torch.Tensor:
-        if isinstance(out, torch_sparse.SparseTensor):
+        if not _TORCH_SP_SUPPORT and isinstance(out, torch_sparse.SparseTensor):
             return out.get_diag()
+        elif _TORCH_SP_SUPPORT and out.is_sparse:
+            out = out.coalesce()
+            row, col = out.indices()
+            value = out.values()
+            select = row == col
+            ret_val = torch.zeros(N, dtype=out.dtype, device=out.device)
+            ret_val[row[select]] = value[select]
+            return ret_val
         return out[loop_index, loop_index]
 
     out = adj
