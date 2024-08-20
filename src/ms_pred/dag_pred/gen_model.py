@@ -462,13 +462,14 @@ class FragGNN(pl.LightningModule):
         else:
             batched_input = True
         batch_size = len(root_smi)
+        assert batch_size > 0
 
         # Step 1: Get a fragmentation engine for root mol
         engine = [fragmentation.FragmentEngine(rsmi) for rsmi in root_smi]
         max_depth = engine[0].max_tree_depth  # all max_depth should be the same
         root_frag = [e.get_root_frag() for e in engine]
         root_form = [common.form_from_smi(rsmi) for rsmi in root_smi]
-        root_form_vec = torch.FloatTensor([common.formula_to_dense(rf) for rf in root_form]).to(device)
+        root_form_vec = torch.FloatTensor(np.array([common.formula_to_dense(rf) for rf in root_form])).to(device)
         adducts = torch.LongTensor([common.ion2onehot_pos[a] if type(a) is str else a for a in adduct]).to(device)
         collision_engs = torch.FloatTensor(collision_eng).to(device)
         precursor_mzs = torch.FloatTensor(precursor_mz).to(device)
@@ -563,7 +564,6 @@ class FragGNN(pl.LightningModule):
                     frag_to_hash[ri][st] = nfh
 
                 # if DGL graph has >40000 nodes, split the batch to cap GPU memory usage
-
 
                 # pred_leaving_list = []
                 # for _frag_batch, _new_frag_hashes, _rev_idx, _frag_form_vecs in \
