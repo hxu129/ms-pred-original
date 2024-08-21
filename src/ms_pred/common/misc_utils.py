@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import h5py
+import hashlib
 from matplotlib import pyplot as plt
 
 import ms_pred.common.chem_utils as chem_utils
@@ -766,3 +767,14 @@ def nce_to_ev(nce, precursor_mz):
     else:
         return float(ev)
 
+
+def md5(fname, chunk_size=4096):
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def str_to_hash(inp_str, digest_size=16):
+    return hashlib.blake2b(inp_str.encode("ascii"), digest_size=digest_size).hexdigest()

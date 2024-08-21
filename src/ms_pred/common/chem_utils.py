@@ -479,7 +479,7 @@ def rm_stereo(mol: str, mol_type='smi') -> str:
         raise ValueError(f"Unknown mol_type={mol_type}")
 
     if mol is None:
-        return ""
+        return
     else:
         Chem.RemoveStereochemistry(mol)
 
