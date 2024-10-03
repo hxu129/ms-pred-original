@@ -8,7 +8,7 @@ import multiprocess.context as ctx
 ctx._force_start_method('spawn')
 
 def simple_parallel(
-    input_list, function, max_cpu=16, timeout=4000, max_retries=3, use_ray: bool = False,
+    input_list, function, max_cpu=16, timeout=4000, max_retries=3, use_ray: bool = False, task_name="",
 ):
     """Simple parallelization.
 
@@ -26,7 +26,7 @@ def simple_parallel(
 
     cpus = min(mp.cpu_count(), max_cpu)
     with mp.ProcessPool(processes=cpus) as pool:
-        results = list(pool.imap(function, input_list))
+        results = list(tqdm(pool.imap(function, input_list), desc=task_name))
 
     return results
 
@@ -64,7 +64,7 @@ def chunked_parallel(
     Args:
         input_list : list of objects to apply function
         function : Callable with 1 input and returning a single value
-        chunks: number of hcunks
+        chunks: number of chunks
         max_cpu: Max num cpus
         output_func: an output function that writes function output to the disk
     """

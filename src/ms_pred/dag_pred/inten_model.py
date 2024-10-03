@@ -279,10 +279,10 @@ class IntenGNN(pl.LightningModule):
             targ:
         """
         def norm_peaks(prob):
-            return prob / (prob.sum(dim=-1, keepdim=True) + 1e-9)
+            return prob / (prob.sum(dim=-1, keepdim=True) + 1e-22)
         def entropy(prob):
-            assert torch.all(torch.abs(prob.sum(dim=-1) - 1) < 1e-3)
-            return -torch.sum(prob * torch.log(prob + 1e-9), dim=-1)
+            assert torch.all(torch.abs(prob.sum(dim=-1) - 1) < 1e-3), prob.sum(dim=-1)
+            return -torch.sum(prob * torch.log(prob + 1e-22), dim=-1)
 
         if not self.binned_targs:
             if weighted:

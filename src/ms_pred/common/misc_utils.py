@@ -10,6 +10,7 @@ import pandas as pd
 import numpy as np
 from tqdm import tqdm
 import h5py
+import hashlib
 from matplotlib import pyplot as plt
 
 import ms_pred.common.chem_utils as chem_utils
@@ -193,7 +194,7 @@ def parse_spectra(spectra_file: [str, list]) -> Tuple[dict, List[Tuple[str, np.n
     Parses spectra in the SIRIUS format and returns
 
     Args:
-        spectra_file (str or list): Name of spectra file to parse
+        spectra_file (str or list): Name of spectra file to parse or lines of parsed spectra
     Return:
         Tuple[dict, List[Tuple[str, np.ndarray]]]: metadata and list of spectra
             tuples containing name and array
@@ -252,6 +253,64 @@ def parse_spectra(spectra_file: [str, list]) -> Tuple[dict, List[Tuple[str, np.n
         metadata["_FILE_PATH"] = spectra_file
         metadata["_FILE"] = Path(spectra_file).stem
     return metadata, spectras
+
+
+def parse_spectra_mgf(
+    mgf_file: str, max_num = None
+) -> List[Tuple[dict, List[Tuple[str, np.ndarray]]]]:
+    """parse_spectr_mgf.
+
+    Parses spectra in the MGF file formate, with
+
+    Args:
+        mgf_file (str) : str
+        max_num (Optional[int]): If set, only parse this many
+    Return:
+        List[Tuple[dict, List[Tuple[str, np.ndarray]]]]: metadata and list of spectra
+            tuples containing name and array
+    """
+
+    key = lambda x: x.strip() == "BEGIN IONS"
+    parsed_spectra = []
+    with open(mgf_file, "r") as fp:
+
+        for (is_header, group) in tqdm(groupby(fp, key)):
+
+            if is_header:
+                continue
+
+            meta = dict()
+            spectra = []
+            # Note: Sometimes we have multiple scans
+            # This mgf has them collapsed
+            cur_spectra_name = "spec"
+            cur_spectra = []
+            group = list(group)
+            for line in group:
+                line = line.strip()
+                if not line:
+                    pass
+                elif line == "END IONS" or line == "BEGIN IONS":
+                    pass
+                elif "=" in line:
+                    k, v = [i.strip() for i in line.split("=", 1)]
+                    meta[k] = v
+                else:
+                    mz, intens = line.split()
+                    cur_spectra.append((float(mz), float(intens)))
+
+            if len(cur_spectra) > 0:
+                cur_spectra = np.vstack(cur_spectra)
+                spectra.append((cur_spectra_name, cur_spectra))
+                parsed_spectra.append((meta, spectra))
+            else:
+                pass
+                # print("no spectra found for group: ", "".join(group))
+
+            if max_num is not None and len(parsed_spectra) > max_num:
+                # print("Breaking")
+                break
+        return parsed_spectra
 
 
 def parse_cfm_out(spectra_file: str, max_merge=False) -> Tuple[dict, pd.DataFrame]:
@@ -682,3 +741,40 @@ def np_stack_padding(it, axis=0):
     max_shape = [max(i) for i in zip(*[j.shape for j in it])]
     mat = np.stack([resize(row, max_shape) for row in it], axis=axis)
     return mat
+
+def nce_to_ev(nce, precursor_mz):
+    if type(nce) is str:
+        output_type = 'str'
+        if '.' in nce:  # decimal points
+            decimal_num = len(nce.strip().split('.')[-1])
+        else:
+            decimal_num = 0
+        nce = float(nce)
+    elif type(nce) is int:
+        output_type = 'int'
+    elif type(nce) is float:
+        output_type = 'float'
+    else:
+        raise TypeError(f'Input NCE type {type(nce)} is not understood')
+
+    ev = nce * precursor_mz / 500
+
+    if output_type == 'str':
+        format_str = '{' + f':.{decimal_num}f' + '}'
+        return format_str.format(ev)
+    elif output_type == 'int':
+        return int(round(ev))
+    else:
+        return float(ev)
+
+
+def md5(fname, chunk_size=4096):
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+
+def str_to_hash(inp_str, digest_size=16):
+    return hashlib.blake2b(inp_str.encode("ascii"), digest_size=digest_size).hexdigest()

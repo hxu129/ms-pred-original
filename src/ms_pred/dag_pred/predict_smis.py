@@ -3,12 +3,12 @@
 Make both dag and intensity predictions jointly and revert to binned
 
 """
-
 import logging
 import multiprocess.process
 import random
 import math
 import ast
+import json
 from tqdm import tqdm
 from datetime import datetime
 import yaml
@@ -154,8 +154,8 @@ def predict():
             tup_to_process = []
 
             for colli_eng in collision_energies:
-                colli_eng_val = float(colli_eng.split()[0])
-                if math.isnan(colli_eng_val):
+                colli_eng_val = common.collision_energy_to_float(colli_eng)  # str to float
+                if math.isnan(colli_eng_val):  # skip collision_energy == nan (no collision energy recorded)
                     continue
                 tup_to_process.append((smi, name, colli_eng_val, adduct, precursor_mz,
                                        f"pred_{name}/ikey {inchikey}/collision {colli_eng}"))
@@ -247,7 +247,7 @@ def predict():
                     h5_name, spec_name, smi, inchikey, output_spec, pred_frag = out_item
                     h5.write_data(h5_name + '/spec', output_spec)
                     if pred_frag is not None:
-                        h5.write_data(h5_name + '/frag', pred_frag)
+                        h5.write_str(h5_name + '/frag', json.dumps(pred_frag.tolist()))  # save as string avoids overflow
                     h5.update_attr(h5_name, {'smiles': smi, 'ikey': inchikey, 'spec_name': spec_name})
             h5.close()
 

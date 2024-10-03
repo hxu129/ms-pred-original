@@ -376,9 +376,12 @@ def formula_difference(formula_1, formula_2):
     }
 
     for k, v in form_2.items():
-        form_1[k] = form_1[k] - form_2[k]
+        if k in form_1:
+            form_1[k] = form_1[k] - form_2[k]
+        else:
+            form_1[k] = -form_2[k]
 
-    out_formula = "".join([f"{k}{v}" for k, v in form_1.items() if v > 0])
+    out_formula = "".join([f"{k}{v}" for k, v in form_1.items() if v != 0])
     return out_formula
 
 
@@ -464,6 +467,28 @@ def form_from_inchi(inchi: str) -> str:
     """
     return uncharged_formula(inchi, mol_type="inchi")
 
+
+def rm_stereo(mol: str, mol_type='smi') -> str:
+    if mol_type == 'smi':
+        mol = Chem.MolFromSmiles(mol)
+    elif mol_type == 'inchi':
+        mol = Chem.MolFromInchi(mol)
+    elif mol_type == 'mol':
+        mol = mol
+    else:
+        raise ValueError(f"Unknown mol_type={mol_type}")
+
+    if mol is None:
+        return
+    else:
+        Chem.RemoveStereochemistry(mol)
+
+    if mol_type == 'smi':
+        return Chem.MolToSmiles(mol)
+    elif mol_type == 'inchi':
+        return Chem.MolToInchi(mol)
+    else:
+        return mol
 
 def inchikey_from_smiles(smi: str) -> str:
     """inchikey_from_smiles.
@@ -595,6 +620,13 @@ def get_collision_energy(filename):
     else:
         colli_eng = 'nan'
     return colli_eng
+
+
+def collision_energy_to_float(colli_eng):
+    if isinstance(colli_eng, str):
+        return float(colli_eng.split()[0])
+    else:
+        return float(colli_eng)
 
 
 def sanitize(mol_list: List[Chem.Mol]) -> List[Chem.Mol]:
