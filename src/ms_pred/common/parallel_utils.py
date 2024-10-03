@@ -8,7 +8,7 @@ import multiprocess.context as ctx
 ctx._force_start_method('spawn')
 
 def simple_parallel(
-    input_list, function, max_cpu=16, timeout=4000, max_retries=3, use_ray: bool = False
+    input_list, function, max_cpu=16, timeout=4000, max_retries=3, use_ray: bool = False,
 ):
     """Simple parallelization.
 
@@ -56,6 +56,7 @@ def chunked_parallel(
     chunks=100,
     max_cpu=16,
     output_func=None,
+    task_name="",
     **kwargs,
 ):
     """chunked_parallel.
@@ -88,7 +89,7 @@ def chunked_parallel(
     from pathos import multiprocessing as mp
     cpus = min(mp.cpu_count(), max_cpu)
     with mp.ProcessPool(processes=cpus, **kwargs) as pool:
-        iter_outputs = tqdm(pool.imap(batch_func, chunked_list), total=len(chunked_list))
+        iter_outputs = tqdm(pool.imap(batch_func, chunked_list), total=len(chunked_list), desc=task_name)
         if output_func is None:
             list_outputs = list(iter_outputs)
             # Unroll
