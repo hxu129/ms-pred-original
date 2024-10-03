@@ -9,7 +9,6 @@ from collections import defaultdict
 from functools import partial
 from typing import Dict, List
 import copy
-import ot
 
 import pygmtools as pygm
 
