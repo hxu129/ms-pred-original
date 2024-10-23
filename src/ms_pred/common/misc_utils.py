@@ -383,6 +383,34 @@ def parse_cfm_out(spectra_file: str, max_merge=False) -> Tuple[dict, pd.DataFram
     return meta_data, full_spec
 
 
+def merge_specs(specs_list, precision=4, merge_method='sum'):
+    mz_to_inten_pair = {}
+    new_tuples = []
+    for spec in specs_list.values():
+        for tup in spec:
+            mz, inten = tup
+            mz_ind = np.round(mz, precision)
+            cur_pair = mz_to_inten_pair.get(mz_ind)
+            if cur_pair is None:
+                mz_to_inten_pair[mz_ind] = tup
+                new_tuples.append(tup)
+            else:
+                if merge_method == 'sum':
+                    cur_pair[1] += inten  # sum merging
+                elif merge_method == 'max':
+                    cur_pair[1] = max(cur_pair[1], inten)  # max merging
+                else:
+                    raise ValueError(f'Unknown merge_method {merge_method}')
+
+    merged_spec = np.vstack(new_tuples)
+    merged_spec = merged_spec[merged_spec[:, 1] > 0]
+    if len(merged_spec) == 0:
+        return
+    merged_spec[:, 1] = merged_spec[:, 1] / merged_spec[:, 1].max()
+
+    return {'nan': merged_spec}
+
+
 def process_spec_file(meta, tuples, precision=4, merge_specs=True, exclude_parent=False):
     """process_spec_file."""
 
@@ -701,33 +729,6 @@ def build_mgf_str(
 
     full_out = "\n\n".join(entries)
     return full_out
-
-
-def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title='', dpi=300, ppm=20):
-    fig = plt.figure(figsize=(10, 7), dpi=dpi)
-    largest_mz = 0
-    for idx, spec in enumerate((spec1, spec2)):
-        spec = np.array(spec).astype(np.float64)
-        spec[:, 1] = spec[:, 1] / spec[:, 1].max()
-        # spec[:, 1] = np.sqrt(spec[:, 1])
-        spec = spec[spec[:, 1] > 0.01]
-        largest_mz = max(largest_mz, spec[:, 0].max())
-        intensity_arr = spec[:, 1] if idx == 0 else -spec[:, 1]
-        for mz, inten in zip(spec[:, 0], intensity_arr):
-            mz_in_spec1 = np.min(np.abs(mz - spec1[:, 0])) / mz < 1e-6 * ppm
-            mz_in_spec2 = np.min(np.abs(mz - spec2[:, 0])) / mz < 1e-6 * ppm
-            markerline, stemlines, baseline = plt.stem(mz, inten, 'g' if mz_in_spec1 and mz_in_spec2 else 'k', markerfmt=" ")
-            plt.setp(stemlines, 'linewidth', 0.5)
-
-    plt.axhline(y=0, color='k', linestyle='-')
-    plt.ylabel(f'{spec2_name} intensity' + ' ' * 40 + f'{spec1_name} intensity')
-
-    ax = plt.gca()
-    ax.set_xlim(0, largest_mz * 1.05)
-    ax.set_ylim(-1.1, 1.1)
-
-    if title:
-        plt.title(title)
 
 
 def np_stack_padding(it, axis=0):

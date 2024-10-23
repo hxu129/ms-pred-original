@@ -280,6 +280,7 @@ def train_model():
         max_epochs=kwargs["max_epochs"],
         gradient_clip_algorithm="value",
         accumulate_grad_batches=kwargs["grad_accumulate"],
+        num_sanity_val_steps=2 if kwargs["debug"] else 0,
     )
 
     if not kwargs["test_checkpoint"]:

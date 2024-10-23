@@ -737,7 +737,7 @@ class IntenDataset(DAGDataset):
 
 
 class IntenContrDataset(DAGDataset):
-    """Intensity Constrastive Dataset."""
+    """Intensity Contrastive Dataset."""
 
     def __init__(
         self,
@@ -748,17 +748,13 @@ class IntenContrDataset(DAGDataset):
         num_workers=0,
         use_ray: bool = False,
         num_decoys: int = 7,
-        gen_checkpoint: str = 'results/dag_nist20/split_1_rnd1/version_0/best.ckpt',
-        decoy_gen: str = 'mutation',
+        decoy_path: str = 'results/dag_nist20/split_1_rnd1/preds_train_100/decoy_tree_preds.hdf5',
         **kwargs,
     ):
         """__init__.
 
         Args:
         """
-        from foam.opt_graph_ga_fc.mutate import mutate
-        import ms_pred.dag_pred.gen_model as gen_model
-
         self.tree_processor = tree_processor
         self.read_tree = self.tree_processor.process_tree_inten
         super().__init__(
@@ -768,15 +764,8 @@ class IntenContrDataset(DAGDataset):
             num_workers=num_workers,
             use_ray=use_ray,
         )
-        self.decoy_gen = decoy_gen
-        self.mutate = functools.partial(mutate, mutation_rate=1)
-        self.h5path = '/home/runzhong/foam/data/pubchem/pubchem_formulae_inchikey.hdf5'
+        self.decoy_path = decoy_path
         self.num_decoys = num_decoys
-        self.gen_model = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint, map_location="cpu")
-        self.gen_model.eval()
-        self.gen_model.freeze()
-        self.gen_model_threshold = 0
-        self.gen_model_maxnodes = 100
 
     @classmethod
     def get_collate_fn(cls):
@@ -816,14 +805,13 @@ class IntenContrDataset(DAGDataset):
 
     def __getitem__(self, idx: int):
         name = self.spec_names[idx]
+        spec_name = '_'.join(name.split('_')[:-1])  # remove collision energy label
         adduct = self.name_to_adducts[name]
         precursor = self.name_to_precursors[name]
         dataset_smi = self.name_to_smiles[name]
-        dataset_inchikey = common.inchikey_from_smiles(dataset_smi)
-        dataset_formula = common.form_from_smi(dataset_smi)
 
         dgl_entry = self.read_fn(name)["dgl_tree"]
-        colli_eng = dgl_entry['collision_energy']
+        colli_eng = common.get_collision_energy(name)
         outdict = {"name": name, "adduct": adduct, "precursor": precursor, 'smiles': dataset_smi, 'decoy': 0}
 
         # Convert this into a list of graphs with a list of targets
@@ -831,56 +819,33 @@ class IntenContrDataset(DAGDataset):
 
         outlist = [outdict]
 
-        # cand_str = self.h5obj.read_str(dataset_formula)
-        # smi_inchi_list = json.loads(cand_str)
+        decoy_h5_obj = common.HDF5Dataset(self.decoy_path)
+        if f'pred_{spec_name}' in decoy_h5_obj:
+            colli_eng_h5obj = decoy_h5_obj[f'pred_{spec_name}']
+            if f'collision {colli_eng}' in colli_eng_h5obj:
+                decoys_h5obj = colli_eng_h5obj[f'collision {colli_eng}']
+                decoy_keys = list(decoys_h5obj.keys())
+                if self.num_decoys < len(decoy_keys):
+                    decoy_keys = random.sample(decoy_keys, self.num_decoys)
+                for decoy_key in decoy_keys:
+                    h5_name = f'pred_{spec_name}/collision {colli_eng}/{decoy_key}'
+                    gen_pred = json.loads(decoy_h5_obj.read_str(h5_name))
 
-        if self.decoy_gen == 'mutation':
-            decoy_mols = [self.mutate(Chem.MolFromSmiles(dataset_smi)) for _ in range(self.num_decoys)]
-        elif self.decoy_gen == 'pubchem':
-            h5obj = common.HDF5Dataset(self.h5path)
-            if dataset_formula in h5obj:
-                cand_str = h5obj.read_str(dataset_formula)
-                smi_inchi_list = json.loads(cand_str)
-                decoy_mols_and_inchikeys = random.choices(smi_inchi_list, k=self.num_decoys)
-                decoy_mols = [Chem.MolFromSmiles(_[0]) for _ in decoy_mols_and_inchikeys]
-            else:
-                decoy_mols = [self.mutate(Chem.MolFromSmiles(dataset_smi)) for _ in range(self.num_decoys)]
-        else:
-            raise NotImplementedError
-        decoy_mols = self.sanitize(decoy_mols)
-        decoy_smis = []
-        for mol in decoy_mols:
-            new_smi = Chem.MolToSmiles(mol)
-            if common.inchikey_from_smiles(new_smi) != dataset_inchikey:
-                decoy_smis.append(new_smi)
+                    # Filter out invalid entries
+                    engine = fragmentation.FragmentEngine(gen_pred['root_inchi'], mol_str_type="inchi")
+                    root_frag_id = engine.get_root_frag()
+                    frag_ids = [frag_entry['frag'] for frag_entry in gen_pred['frags'].values()]
+                    if any([id > root_frag_id for id in frag_ids]):  # entry is invalid
+                        logging.warning('Entry is invalid, skipping')
+                        continue
 
-        with torch.no_grad():
-            torch.set_num_threads(1)
-            for i, smi in enumerate(decoy_smis):
-                try:
-                    frag_preds = self.gen_model.predict_mol(
-                        smi,
-                        precursor_mz=precursor,
-                        collision_eng=float(colli_eng),
-                        adduct=adduct,
-                        threshold=self.gen_model_threshold,
-                        device="cpu",
-                        max_nodes=self.gen_model_maxnodes,
-                    )
-                    decoy_name = self.rm_collision(name) + f'_decoy {i}_collision {common.get_collision_energy(name)}'
-                    trees = self.tree_processor.process_tree_inten_pred({
-                        "root_inchi": Chem.MolToInchi(Chem.MolFromSmiles(smi)),
-                        "name": decoy_name,
-                        "frags": frag_preds,
-                        "collision_energy": float(colli_eng),
-                    })
+                    smi = common.smiles_from_inchi(gen_pred['root_inchi'])
+                    trees = self.tree_processor.process_tree_inten_pred(gen_pred)
                     decoy_entry = trees['dgl_tree']
                     decoy_entry.update(
-                        {"name": decoy_name, "adduct": adduct, "precursor": precursor, "collision_energy": colli_eng,
+                        {"name": gen_pred['name'], "adduct": adduct, "precursor": precursor, "collision_energy": colli_eng,
                          "smiles": smi, "decoy": 1})
                     outlist.append(decoy_entry)
-                except RuntimeError as err:
-                    print(err)
 
         return outlist
 

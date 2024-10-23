@@ -17,6 +17,11 @@ from rdkit.Chem.MolStandardize import rdMolStandardize
 P_TBL = Chem.GetPeriodicTable()
 
 ROUND_FACTOR = 4
+FIX_H_IN_INCHI = False
+import os
+if 'FIX_H_IN_INCHI' in os.environ: # TEMP: change mol_to_inchi behavior by environment variable
+    if eval(os.environ['FIX_H_IN_INCHI']):
+        FIX_H_IN_INCHI = True
 
 ELECTRON_MASS = 0.00054858
 CHEM_FORMULA_SIZE = "([A-Z][a-z]*)([0-9]*)"
@@ -486,7 +491,10 @@ def rm_stereo(mol: str, mol_type='smi') -> str:
     if mol_type == 'smi':
         return Chem.MolToSmiles(mol)
     elif mol_type == 'inchi':
-        return Chem.MolToInchi(mol)
+        if FIX_H_IN_INCHI:
+            return Chem.MolToInchi(mol, options='/FIX_H')
+        else:
+            return Chem.MolToInchi(mol)
     else:
         return mol
 
@@ -519,7 +527,10 @@ def inchi_from_smiles(smi: str) -> str:
     if mol is None:
         return ""
     else:
-        return Chem.MolToInchi(mol)
+        if FIX_H_IN_INCHI:
+            return Chem.MolToInchi(mol, options='/FIX_H')
+        else:
+            return Chem.MolToInchi(mol)
 
 
 def smi_inchi_round_mol(smi: str) -> Chem.Mol:
@@ -535,7 +546,7 @@ def smi_inchi_round_mol(smi: str) -> Chem.Mol:
     if mol is None:
         return None
 
-    inchi = Chem.MolToInchi(mol)
+    inchi = Chem.MolToInchi(mol, options='/FIX_H') if FIX_H_IN_INCHI else Chem.MolToInchi(mol)
     if inchi is None:
         return None
 
@@ -629,24 +640,49 @@ def collision_energy_to_float(colli_eng):
         return float(colli_eng)
 
 
-def sanitize(mol_list: List[Chem.Mol]) -> List[Chem.Mol]:
+def sanitize(mol_list: List[Chem.Mol], mol_type='mol', return_indices=False) -> List[Chem.Mol]:
     """sanitize a list of mols"""
     new_mol_list = []
-    for mol in mol_list:
-        if mol is not None:
-            try:
-                inchi = Chem.MolToInchi(mol)
-                mol = Chem.MolFromInchi(inchi)
-                if mol is None:
-                    continue
-                smiles = Chem.MolToSmiles(mol)
-                mol = Chem.MolFromSmiles(smiles)
-                if mol is None:
-                    continue
-                inchi = Chem.MolToInchi(mol)
-                mol = Chem.MolFromInchi(inchi)
-                if mol is not None:
-                    new_mol_list.append(mol)
-            except ValueError:
-                logging.warning(f"Bad smiles")
-    return new_mol_list
+    new_idx_list = []
+    for idx, mol in enumerate(mol_list):
+        if mol is None:
+            continue
+
+        if mol_type == 'mol':
+            pass
+        elif mol_type == 'smi':
+            mol = Chem.MolFromSmiles(mol)
+        elif mol_type == 'inchi':
+            mol = Chem.MolFromInchi(mol)
+        else:
+            raise ValueError(f'Unknown mol_type: {mol}')
+
+        if mol is None:
+            continue
+
+        try:
+            inchi = Chem.MolToInchi(mol, options='/FIX_H') if FIX_H_IN_INCHI else Chem.MolToInchi(mol)
+            mol = Chem.MolFromInchi(inchi)
+            if mol is None:
+                continue
+            smiles = Chem.MolToSmiles(mol)
+            mol = Chem.MolFromSmiles(smiles)
+            if mol is None:
+                continue
+            inchi = Chem.MolToInchi(mol, options='/FIX_H') if FIX_H_IN_INCHI else Chem.MolToInchi(mol)
+            mol = Chem.MolFromInchi(inchi)
+            if mol is not None:
+                new_mol_list.append(mol)
+                new_idx_list.append(idx)
+        except ValueError:
+            logging.warning(f"Bad smiles")
+
+    if mol_type == 'smi':
+        new_mol_list = [Chem.MolToSmiles(mol) for mol in new_mol_list]
+    elif mol_type == 'inchi':
+        new_mol_list = [Chem.MolToInchi(mol, options='/FIX_H') if FIX_H_IN_INCHI else Chem.MolToInchi(mol) for mol in new_mol_list]
+
+    if return_indices:
+        return new_mol_list, new_idx_list
+    else:
+        return new_mol_list

@@ -541,12 +541,12 @@ class FragGNN(pl.LightningModule):
                             batched_num_nodes.append(len(info['new_to_old']))
                             idx_offset += rg['graph'].number_of_nodes()
                             batched_old_edge_idx.append(batched_old_edge_idx[-1] + rg['graph'].number_of_edges())
+                if len(new_info_dicts) == 0:
+                    break
                 stack = new_stack
                 batched_select = torch.from_numpy(np.concatenate(batched_select)).to(device)
                 batched_num_nodes = torch.LongTensor(batched_num_nodes).to(device)
                 batched_old_edge_idx = torch.LongTensor(batched_old_edge_idx[1:]).to(device)
-                if len(new_info_dicts) == 0:
-                    break
 
                 # Get batched new DGL graph by extracting subgraph
                 frag_batch = dgl.batch(new_graphs).to(device)

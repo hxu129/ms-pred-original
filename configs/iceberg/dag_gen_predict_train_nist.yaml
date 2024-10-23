@@ -13,9 +13,10 @@ universal_args:
 
   batch-size: [8]
   dataset-name: [nist20]
-  num-workers: [10]
+  num-workers: [12]
   threshold: [0.0]
   max-nodes: [100]
+  num-decoys: [0, 30]  # predict target structures + 30 decoys
 
 iterative_args:
 

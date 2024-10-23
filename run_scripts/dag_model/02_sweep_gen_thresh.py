@@ -11,6 +11,7 @@ workers = 32
 devices = ",".join([str(_) for _ in list_devices])
 python_file = "src/ms_pred/dag_pred/predict_gen.py"
 max_nodes = [10, 20, 30, 40, 50, 100, 200, 300, 500, 1000]
+gpu_workers = [len(list_devices) * _ for _ in [8, 8, 8, 8, 8, 6, 4, 3, 2, 2]]
 subform_name = "magma_subform_50.hdf5"
 debug = False
 
@@ -62,7 +63,7 @@ for res_entry in res_entries:
 
         pred_dir_folders = []
         form_dir_folders = []
-        for max_node in max_nodes:
+        for max_node, gpu_worker in zip(max_nodes, gpu_workers):
             save_dir_temp = save_dir / str(max_node)
             save_dir_temp.mkdir(exist_ok=True)
 
@@ -75,7 +76,7 @@ for res_entry in res_entries:
             --save-dir {save_dir_temp} \\
             --threshold 0  \\
             --max-nodes {max_node} \\
-            --num-workers {gpu_workers} \\
+            --num-workers {gpu_worker} \\
             --gpu
             """
 

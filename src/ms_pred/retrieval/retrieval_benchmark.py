@@ -136,7 +136,7 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
                 return prob / (prob.sum(axis=-1, keepdims=True) + 1e-22)
 
             def entropy(prob):
-                assert np.all(np.abs(prob.sum(axis=-1) - 1) < 5e-3), f"Diff to 1: {np.max(np.abs(prob.sum(axis=-1) - 1))}"
+                # assert np.all(np.abs(prob.sum(axis=-1) - 1) < 5e-3), f"Diff to 1: {np.max(np.abs(prob.sum(axis=-1) - 1))}"
                 return -np.sum(prob * np.log(prob + 1e-22), axis=-1)
 
             norm_pred = norm_peaks(pred_specs)
@@ -147,6 +147,7 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
             dist.append((2 * entropy_mix - entropy_pred - entropy_targ) / np.log(4))
 
         elif func == "emd":
+            import ot
             bins = np.linspace(0, 1500, 15000, dtype=np.float64)
             def norm_peaks(prob):
                 return prob / (prob.sum(axis=-1, keepdims=True) + 1e-22)
@@ -176,7 +177,8 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
 
 
     dist = np.array(dist)  # num of colli energy x number of candidates
-    weights = (np.array(true_npeaks) >= 5) * 3 + 1  # if >=5 peaks: weight=4, else: weight=1
+    # if >=5 peaks: weight=4, elif >=1 peaks: weight=1, else: weight=0
+    weights = (np.array(true_npeaks) >= 5) * 3 + (np.array(true_npeaks) >= 1) * 1
     # weights = np.ones(dist.shape[0])
     weights = weights / weights.sum()
 

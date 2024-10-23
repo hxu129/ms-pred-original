@@ -54,9 +54,8 @@ def add_frag_train_args(parser):
 
     # Contrastive learning parameters
     parser.add_argument("--train-checkpoint", default="", action="store", type=str)
-    parser.add_argument("--gen-checkpoint", default="", action="store", type=str)
     parser.add_argument("--num-decoys", default=7, action="store", type=int)
-    parser.add_argument("--decoy-generation", default="mutation", action="store", choices=["mutation", "pubchem"])
+    parser.add_argument("--decoy-path", default="", action="store", type=str)
 
     # Fix model params
     parser.add_argument("--gnn-layers", default=3, action="store", type=int)
@@ -91,6 +90,7 @@ def add_frag_train_args(parser):
     parser.add_argument("--binned-targs", default=False, action="store_true")
     parser.add_argument("--embed-adduct", default=False, action="store_true")
     parser.add_argument("--embed-collision", default=False, action="store_true")
+    parser.add_argument("--embed-elem-group", default=False, action="store_true")
     parser.add_argument("--encode-forms", default=False, action="store_true")
     parser.add_argument("--add-hs", default=False, action="store_true")
 
@@ -151,13 +151,14 @@ def train_model():
     root_encode = kwargs["root_encode"]
     binned_targs = kwargs["binned_targs"]
     num_decoys = kwargs["num_decoys"]
-    decoy_generation = kwargs["decoy_generation"]
-    gen_checkpoint = kwargs["gen_checkpoint"]
+    decoy_path = kwargs["decoy_path"]
+    embed_elem_group = kwargs["embed_elem_group"]
     tree_processor = dag_data.TreeProcessor(
         pe_embed_k=pe_embed_k,
         root_encode=root_encode,
         binned_targs=binned_targs,
         add_hs=add_hs,
+        embed_elem_group=embed_elem_group,
     )
 
     # Build out frag datasets
@@ -167,9 +168,8 @@ def train_model():
         magma_h5=magma_dag_folder,
         magma_map=name_to_json,
         num_workers=num_workers,
-        gen_checkpoint=gen_checkpoint,
         num_decoys=num_decoys,
-        decoy_gen=decoy_generation,
+        decoy_path=decoy_path,
     )
     val_dataset = dag_data.IntenContrDataset(
         val_df,
@@ -177,9 +177,8 @@ def train_model():
         magma_h5=magma_dag_folder,
         magma_map=name_to_json,
         num_workers=num_workers,
-        gen_checkpoint=gen_checkpoint,
         num_decoys=num_decoys,
-        decoy_gen=decoy_generation,
+        decoy_path=decoy_path,
     )
     test_dataset = dag_data.IntenContrDataset(
         test_df,
@@ -187,9 +186,8 @@ def train_model():
         magma_h5=magma_dag_folder,
         magma_map=name_to_json,
         num_workers=num_workers,
-        gen_checkpoint=gen_checkpoint,
         num_decoys=num_decoys,
-        decoy_gen=decoy_generation,
+        decoy_path=decoy_path,
     )
 
     persistent_workers = kwargs["num_workers"] > 0
@@ -249,6 +247,7 @@ def train_model():
         inject_early=kwargs["inject_early"],
         embed_adduct=kwargs["embed_adduct"],
         embed_collision=kwargs["embed_collision"],
+        embed_elem_group=kwargs["embed_elem_group"],
         binned_targs=binned_targs,
         encode_forms=kwargs["encode_forms"],
         add_hs=add_hs,
@@ -287,6 +286,7 @@ def train_model():
     trainer = pl.Trainer(
         logger=[tb_logger, console_logger],
         accelerator="gpu" if kwargs["gpu"] else "cpu",
+        strategy='ddp',
         devices=1 if kwargs["gpu"] else 0,
         callbacks=callbacks,
         gradient_clip_val=5,
@@ -294,6 +294,7 @@ def train_model():
         max_epochs=kwargs["max_epochs"],
         gradient_clip_algorithm="value",
         accumulate_grad_batches=kwargs["grad_accumulate"],
+        num_sanity_val_steps=2 if kwargs["debug"] else 0,
     )
 
     if kwargs["train_checkpoint"]:

@@ -44,6 +44,8 @@ universal_args:
   grad-accumulate: [1]
   encode-forms: [true]
   add-hs: [true]
+  sk-tau: [0.05]
+  ppm-tol: [20]
 
 iterative_args:
   -  split-name: [split_1.tsv]

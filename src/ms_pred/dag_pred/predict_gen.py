@@ -104,7 +104,7 @@ def predict():
 
     # Load from checkpoint
     gpu = kwargs["gpu"]
-    model = gen_model.FragGNN.load_from_checkpoint(best_checkpoint)
+    model = gen_model.FragGNN.load_from_checkpoint(best_checkpoint, map_location='cpu')
     avail_gpu_num = torch.cuda.device_count()
 
     logging.info(f"Loaded model with from {best_checkpoint}")
@@ -122,6 +122,7 @@ def predict():
             adduct = entry["ionization"]
             precursor_mz = entry["precursor"]
             collision_energies = [i for i in ast.literal_eval(entry["collision_energies"])]
+            smi = common.rm_stereo(smi)
             mol = Chem.MolFromSmiles(smi)
             inchi = Chem.MolToInchi(mol)
             inchikey = Chem.MolToInchiKey(mol)
@@ -135,19 +136,24 @@ def predict():
                 pubchem_rate = 0.5
                 formula = common.uncharged_formula(mol, mol_type='mol')
                 h5obj = common.HDF5Dataset(kwargs['pubchem_map_path'])
-                # output_h5 = common.HDF5Dataset(save_path)  # todo output h5
                 if formula in h5obj:
                     num_pubchem = int(num_decoys * pubchem_rate)
                     num_mutation = num_decoys - num_pubchem
                 else:
                     num_pubchem = 0
                     num_mutation = num_decoys
+
+                # mutate molecules
                 decoy_mols = [mutate(mol, mutation_rate=1.) for _ in range(num_mutation)]
+
+                # get molecules from pubchem
                 if num_pubchem > 0:
                     cand_str = h5obj.read_str(formula)
                     smi_inchi_list = json.loads(cand_str)
-                    decoy_mols += [Chem.MolFromSmiles(_[0]) for _ in random.choices(smi_inchi_list, k=num_decoys)]
+                    decoy_mols += [Chem.MolFromSmiles(_[0]) for _ in random.choices(smi_inchi_list, k=num_pubchem)]
 
+                # sanitize & filter duplicated structures
+                decoy_mols = [common.rm_stereo(m, mol_type='mol') for m in decoy_mols]
                 decoy_mols = np.array(common.sanitize(decoy_mols))
                 decoy_inchikeys = np.array([Chem.MolToInchiKey(m) for m in decoy_mols])
                 _, unique_inds = np.unique(decoy_inchikeys, return_index=True)
@@ -155,20 +161,19 @@ def predict():
                 decoy_smis = []
                 for new_mol, new_inchikey in zip(decoy_mols[unique_inds], decoy_inchikeys[unique_inds]):
                     new_smi = Chem.MolToSmiles(new_mol)
-                    if new_inchikey != inchikey:
-                        decoy_smis.append(new_smi)
+                    if '.' not in new_smi:
+                        if new_inchikey != inchikey:
+                            decoy_smis.append(new_smi)
                 for i, decoy_smi in enumerate(decoy_smis):
                     for colli_eng in collision_energies:
-                        colli_eng_val = float(colli_eng.split()[0])
+                        colli_eng_val = common.collision_energy_to_float(colli_eng)  # str to float
                         out_h5_key = f"pred_{name}/collision {colli_eng}/decoy {i}.json"
-                        # if out_h5_key in output_h5:
-                        #     continue  # skip entries that are already in the file
                         tup_to_process.append((decoy_smi, name + f'_decoy {i}', colli_eng_val, adduct, precursor_mz, inchi,
                                                out_h5_key))
 
             else:
                 for colli_eng in collision_energies:
-                    colli_eng_val = float(colli_eng.split()[0])
+                    colli_eng_val = common.collision_energy_to_float(colli_eng)  # str to float
                     tup_to_process.append((smi, name, colli_eng_val, adduct, precursor_mz, inchi,
                                            f"pred_{name}_collision {colli_eng}.json"))
             return tup_to_process
@@ -233,7 +238,7 @@ def predict():
             return return_list
 
         def write_h5_func(out_entries):
-            h5 = common.HDF5Dataset(save_path, mode='w')  # todo contrastive learning needs r+
+            h5 = common.HDF5Dataset(save_path, mode='w')
             for out_batch in out_entries:
                 for out_item in out_batch:
                     name, data = out_item
