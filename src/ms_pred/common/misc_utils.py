@@ -410,6 +410,12 @@ def merge_specs(specs_list, precision=4, merge_method='sum'):
 
     return {'nan': merged_spec}
 
+def merge_intens(spec_dict):
+    merged_intens = np.zeros_like(next(iter(spec_dict.values())))
+    for spec in spec_dict.values():
+        merged_intens += spec
+    merged_intens = merged_intens / merged_intens.max()
+    return {'nan': merged_intens}
 
 def process_spec_file(meta, tuples, precision=4, merge_specs=True, exclude_parent=False):
     """process_spec_file."""
