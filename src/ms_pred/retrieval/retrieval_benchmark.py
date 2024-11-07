@@ -90,7 +90,7 @@ def process_spec_file(spec_name, name_to_colli: dict, spec_dir: Path, num_bins: 
     return return_dict
 
 
-def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ignore_peak=None, func='cos') -> np.ndarray:
+def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ignore_peak=None, func='cos', selected_evs=None) -> np.ndarray:
     """cos_dist for binned spectrum
 
     Args:
@@ -103,7 +103,10 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
     """
     dist = []
     true_npeaks = []
-    for idx, colli_eng in enumerate(true_spec_dict.keys()):
+    ## sampled_evs = np.random.choice(evs, 3, p = ())
+    if selected_evs:
+        true_spec_dict = {k: v for k, v in true_spec_dict.items() if int(k) in selected_evs}
+    for idx, colli_eng in enumerate(true_spec_dict.keys()): # TODO: sample 
         cand_preds = np.stack([i[colli_eng] for i in cand_preds_dict], axis=0)
         true_spec = true_spec_dict[colli_eng]
 
