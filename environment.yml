@@ -1,12 +1,13 @@
 name: ms-gen
 channels:
 - pytorch
-- dglteam
+- nvidia
+- dglteam/label/th21_cu118
 - conda-forge
 - pyg
 - bioconda
 dependencies:
-- python=3.8.*
+- python=3.9.*
 - cython
 - matplotlib=3.4.*
 - rdkit=2021.03.*
@@ -15,7 +16,8 @@ dependencies:
 - pytorch-lightning=1.6.*
 - pip=21.2.*
 - ipykernel=6.0.*
-- pytorch::pytorch=1.9.* 
+- pytorch::pytorch=2.1.*
+- pytorch::pytorch-cuda=11.8
 - einops
 - nb_conda_kernels=2.3.*
 - seaborn=0.11.*
@@ -23,12 +25,5 @@ dependencies:
 - pytorch-scatter
 - pytorch-sparse
 - matchms
-
-# CPU:
-- dgl=0.8.*
-# GPU:
-#- cudatoolkit=11.1
-#- dgl-cuda11.1=0.8.2
-
- # Removed:
-  #- pytorch::torchvision-cpu # Causing erorrs.. 
+- dgl
+- pyg
