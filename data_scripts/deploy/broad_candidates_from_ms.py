@@ -171,7 +171,7 @@ def main():
                     if mol is None:
                         continue
                     inchi = Chem.MolToInchi(mol)
-                    mol = Chem.MolFromInchi(inchi)
+                    mol = common.canonical_mol_from_inchi(inchi)
                     if mol is None:
                         continue
                 except RuntimeError:

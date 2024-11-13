@@ -108,8 +108,12 @@ def predict():
     avail_gpu_num = torch.cuda.device_count()
 
     logging.info(f"Loaded model with from {best_checkpoint}")
-    save_path = save_dir / ("tree_preds.hdf5" if kwargs["num_decoys"] == 0 else "decoy_tree_preds.hdf5")
-    save_path.parent.mkdir(exist_ok=True)
+    if kwargs["num_decoys"] == 0:
+        all_save_path = [save_dir / "tree_preds.hdf5"]
+    else:
+        save_dir = save_dir / "decoy_tree_preds"
+        all_save_path = [save_dir / f"decoy_tree_preds_chunk_{i}.hdf5" for i in range(kwargs["num_decoys"])]
+    save_dir.mkdir(exist_ok=True)
     with torch.no_grad():
         model.eval()
         model.freeze()
@@ -123,8 +127,8 @@ def predict():
             precursor_mz = entry["precursor"]
             collision_energies = [i for i in ast.literal_eval(entry["collision_energies"])]
             smi = common.rm_stereo(smi)
-            mol = Chem.MolFromSmiles(smi)
-            inchi = Chem.MolToInchi(mol)
+            mol = common.smi_inchi_round_mol(smi)
+            smi = Chem.MolToSmiles(mol)  # canonical smiles
             inchikey = Chem.MolToInchiKey(mol)
 
             tup_to_process = []
@@ -168,14 +172,20 @@ def predict():
                     for colli_eng in collision_energies:
                         colli_eng_val = common.collision_energy_to_float(colli_eng)  # str to float
                         out_h5_key = f"pred_{name}/collision {colli_eng}/decoy {i}.json"
-                        tup_to_process.append((decoy_smi, name + f'_decoy {i}', colli_eng_val, adduct, precursor_mz, inchi,
-                                               out_h5_key))
+                        tup_to_process.append((
+                            decoy_smi, name + f'_decoy {i}', colli_eng_val, adduct, precursor_mz,
+                            out_h5_key,
+                            int(common.str_to_hash(name), base=16) % len(all_save_path)  # output hdf5 index
+                        ))
 
             else:
                 for colli_eng in collision_energies:
                     colli_eng_val = common.collision_energy_to_float(colli_eng)  # str to float
-                    tup_to_process.append((smi, name, colli_eng_val, adduct, precursor_mz, inchi,
-                                           f"pred_{name}_collision {colli_eng}.json"))
+                    tup_to_process.append((
+                        smi, name, colli_eng_val, adduct, precursor_mz,
+                        f"pred_{name}_collision {colli_eng}.json",
+                        0  # only one hdf5 output
+                    ))
             return tup_to_process
 
         entries = [j for _, j in df.iterrows()]
@@ -215,7 +225,7 @@ def predict():
                 device = "cpu"
             model.to(device)
 
-            smi, name, colli_eng_val, adduct, precursor_mz, inchi, out_name = list(zip(*batch))
+            smi, name, colli_eng_val, adduct, precursor_mz, out_name, out_file_idx = list(zip(*batch))
             pred = model.predict_mol(
                 smi,
                 precursor_mz=precursor_mz,
@@ -225,25 +235,30 @@ def predict():
                 device=device,
                 max_nodes=kwargs["max_nodes"],
                 decode_final_step=True,  # no parallel in model prediction
+                canonical_root_smi=True,  # smi is canonical
             )
             return_list = []
-            for _inchi, _name, _pred, _colli_eng_val, _out_name in zip(inchi, name, pred, colli_eng_val, out_name):
+            for _smi, _name, _pred, _colli_eng_val, _adduct, _out_name, _out_file_idx in \
+                    zip(smi, name, pred, colli_eng_val, adduct, out_name, out_file_idx):
                 output = {
-                    "root_inchi": _inchi,
+                    "root_canonical_smiles": _smi,
                     "name": _name,
                     "frags": _pred,
                     "collision_energy": _colli_eng_val,
+                    "adduct": _adduct,
                 }
-                return_list.append((_out_name, json.dumps(output, indent=2)))
+                return_list.append((_out_name, json.dumps(output, indent=2), _out_file_idx))
             return return_list
 
         def write_h5_func(out_entries):
-            h5 = common.HDF5Dataset(save_path, mode='w')
+            h5s = [common.HDF5Dataset(save_path, mode='w') for save_path in all_save_path]
             for out_batch in out_entries:
                 for out_item in out_batch:
-                    name, data = out_item
+                    name, data, file_idx = out_item
+                    h5 = h5s[file_idx]
                     h5.write_str(name, data)
-            h5.close()
+            for h5 in h5s:
+                h5.close()
 
         if kwargs["num_workers"] == 0:
             output_entries = [producer_func(batch) for batch in tqdm(all_batched_entries)]

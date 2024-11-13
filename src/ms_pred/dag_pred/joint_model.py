@@ -70,6 +70,7 @@ class JointModel(pl.LightningModule):
         max_nodes: int,
         binned_out: bool = False,
         adduct_shift: bool = False,
+        canonical_root_smi: bool = False,
     ) -> dict:
         """predict_mol.
 
@@ -97,7 +98,8 @@ class JointModel(pl.LightningModule):
         else:
             batched_input = True
         batch_size = len(root_smi)
-        root_inchi = [common.inchi_from_smiles(_) for _ in root_smi]
+        if not canonical_root_smi:
+            root_smi = [common.smiles_from_inchi(common.inchi_from_smiles(_)) for _ in root_smi] # canonical smiles
 
         frag_tree = self.gen_model_obj.predict_mol(
             root_smi=root_smi,
@@ -107,11 +109,18 @@ class JointModel(pl.LightningModule):
             threshold=threshold,
             device=device,
             max_nodes=max_nodes,
+            canonical_root_smi=True,
         )
         processed_trees = []
         out_trees = []
-        for r_inchi, colli_eng, adct, p_mz, tree in zip(root_inchi, collision_eng, adduct, precursor_mz, frag_tree):
-            tree = {"root_inchi": r_inchi, "name": "", "collision_energy": colli_eng, "frags": tree}
+        for r_smi, colli_eng, adct, p_mz, tree in zip(root_smi, collision_eng, adduct, precursor_mz, frag_tree):
+            tree = {
+                "root_canonical_smiles": r_smi,
+                "name": "",
+                "collision_energy": colli_eng,
+                "frags": tree,
+                "adduct": adct
+            }
 
             processed_tree = self.inten_tp.process_tree_inten_pred(tree)
 
@@ -137,8 +146,10 @@ class JointModel(pl.LightningModule):
         max_remove_hs = safe_device(batch["max_remove_hs"])
         max_add_hs = safe_device(batch["max_add_hs"])
         masses = safe_device(batch["masses"])
-        if adduct_shift:
-            masses += safe_device(torch.tensor([common.ion2mass[a] for a in adduct], dtype=masses.dtype)[:, None, None])
+        if not self.inten_model_obj.include_unshifted_mz:
+            masses = masses[:, :, :1, :].contiguous()  # only keep m/z with adduct shift
+
+        assert adduct_shift, 'adduct shift must be enforced'
 
         adducts = safe_device(batch["adducts"]).to(device)
         collision_engs = safe_device(batch["collision_engs"]).to(device)

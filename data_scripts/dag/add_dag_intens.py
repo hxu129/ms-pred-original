@@ -49,14 +49,17 @@ def relabel_tree(
     if not true_dag_name in true_dag_h5:
         return None
 
-    colli_eng = common.get_collision_energy(true_dag_name)
-
     pred_dag = json.loads(pred_dag_h5.read_str(pred_dag_name))
     true_dag = json.loads(true_dag_h5.read_str(true_dag_name))
-    pred_dag['collision_energy'] = colli_eng
+
+    assert 'root_canonical_smiles' in pred_dag
+    assert 'frags' in pred_dag
+    assert 'collision_energy' in pred_dag
+    assert 'adduct' in pred_dag
+
     if add_raw:
         true_tbl = true_dag["output_tbl"]
-        raw_spec = list(zip(true_tbl["formula_mass_no_adduct"], true_tbl["rel_inten"]))
+        raw_spec = list(zip(true_tbl["mono_mass"], true_tbl["rel_inten"]))
         pred_dag["raw_spec"] = raw_spec
     else:
         pred_frags, true_frags = pred_dag["frags"], true_dag["frags"]

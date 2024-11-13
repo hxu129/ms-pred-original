@@ -38,9 +38,10 @@ class IntenGNN(pl.LightningModule):
         root_encode: str = "gnn",
         inject_early: bool = False,
         warmup: int = 1000,
-        embed_adduct = False,
-        embed_collision = False,
-        embed_elem_group=False,
+        embed_adduct: bool = False,
+        embed_collision: bool = False,
+        embed_elem_group: bool = False,
+        include_unshifted_mz: bool = False,
         binned_targs: bool = True,
         encode_forms: bool = False,
         add_hs: bool = False,
@@ -59,6 +60,7 @@ class IntenGNN(pl.LightningModule):
         self.embed_adduct = embed_adduct
         self.embed_collision = embed_collision
         self.embed_elem_group = embed_elem_group
+        self.include_unshifted_mz = include_unshifted_mz
         self.binned_targs = binned_targs
         self.encode_forms = encode_forms
         self.add_hs = add_hs
@@ -222,9 +224,15 @@ class IntenGNN(pl.LightningModule):
 
         self.num_outputs = len(self.output_activations)
         self.output_size = run_magma.FRAGMENT_ENGINE_PARAMS["max_broken_bonds"] * 2 + 1
-        self.output_map = nn.Linear(
-            self.hidden_size, self.num_outputs * self.output_size
-        )
+        if self.include_unshifted_mz:
+            self.output_map = nn.Linear(
+                self.hidden_size, self.num_outputs * self.output_size * 2
+                # output_size dim for adduct mass shift & output_size dim for no mass shift
+            )
+        else:
+            self.output_map = nn.Linear(
+                self.hidden_size, self.num_outputs * self.output_size
+            )
 
         # Define map from output layer to attn
         self.isomer_attn_out = copy.deepcopy(self.output_map)
@@ -282,7 +290,7 @@ class IntenGNN(pl.LightningModule):
             return prob / (prob.sum(dim=-1, keepdim=True) + 1e-22)
         def entropy(prob):
             assert torch.all(torch.abs(prob.sum(dim=-1) - 1) < 1e-3), prob.sum(dim=-1)
-            return -torch.sum(prob * torch.log(prob + 1e-22), dim=-1)
+            return -torch.sum(prob * torch.log(prob + 1e-22), dim=-1) / 1.3862943611198906 # norm by log(4)
 
         if not self.binned_targs:
             if weighted:
@@ -574,47 +582,46 @@ class IntenGNN(pl.LightningModule):
         valid_pos = torch.logical_and(ub_mask, lb_mask)
         valid_pos = torch.logical_and(valid_pos, ~attn_mask[:, :, None])
 
-        # B x Length x outputs x Mass shift
-        valid_pos = valid_pos[:, :, None, :].expand(
-            batch_size, max_frags, self.num_outputs, self.output_size
+        if self.include_unshifted_mz:
+            mz_groups = 2
+        else:
+            mz_groups = 1
+
+        # B x Length x outputs x 2 x Mass shift
+        valid_pos = valid_pos[:, :, None, None, :].expand(
+            batch_size, max_frags, self.num_outputs, mz_groups, self.output_size
         )
         # B x L x Output
         output = self.output_map(hidden)
         attn_weights = self.isomer_attn_out(hidden)
 
-        # NOT USED: Enforce quadratic function mask
-        # quad_a, quad_b, quad_c = self.get_quadratic_func_params(precursor_mzs, collision_engs)
-        # mask_weights = torch.relu(quad_a[:, None, None] * masses ** 2 + quad_b[:, None, None] * masses + quad_c[:, None, None])
-        # attn_weights += torch.log(mask_weights) # attention weights are in the log space
-
-        # B x L x Out x Mass shifts
-        output = output.reshape(batch_size, max_frags, self.num_outputs, -1)
-        attn_weights = attn_weights.reshape(batch_size, max_frags, self.num_outputs, -1)
+        # B x L x Out x 2 x Mass shifts
+        output = output.reshape(batch_size, max_frags, self.num_outputs, mz_groups, -1)
+        attn_weights = attn_weights.reshape(batch_size, max_frags, self.num_outputs, mz_groups, -1)
 
         # Mask attn weights
-        # attn_weights.masked_fill_(~valid_pos, -float("inf"))
         attn_weights.masked_fill_(~valid_pos, -99999)  # -float("inf"))
 
-        # B x Out x L x Mass shifts
+        # B x Out x L x 2 x Mass shifts
         output = output.transpose(1, 2)
         attn_weights = attn_weights.transpose(1, 2)
         valid_pos_binned = valid_pos.transpose(1, 2)
 
-        # Calc inverse indices => B x Out x L x shift
+        # Calc inverse indices => B x Out x L x 2 x shift
         inverse_indices = torch.clamp(torch.bucketize(masses, self.inten_buckets, right=False), max=len(self.inten_buckets) - 1)
         inverse_indices = inverse_indices[:, None, :, :].expand(attn_weights.shape)
 
-        # B x Out x (L * Mass shifts)
+        # B x Out x (L * 2 * Mass shifts)
         attn_weights = attn_weights.reshape(batch_size, self.num_outputs, -1)
         output = output.reshape(batch_size, self.num_outputs, -1)
         inverse_indices = inverse_indices.reshape(batch_size, self.num_outputs, -1)
         valid_pos_binned = valid_pos.reshape(batch_size, self.num_outputs, -1)
 
-        # B x Outs x ( L * mass shifts )
+        # B x Outs x ( L * 2 * mass shifts )
         pool_weights = ts.scatter_softmax(attn_weights, index=inverse_indices, dim=-1)
         weighted_out = pool_weights * output
 
-        # B x Outs x (UNIQUE(L * mass shifts))
+        # B x Outs x (UNIQUE(L * 2 * mass shifts))
         output_binned = ts.scatter_add(
             weighted_out,
             index=inverse_indices,
@@ -622,13 +629,13 @@ class IntenGNN(pl.LightningModule):
             dim_size=self.inten_buckets.shape[-1],
         )
 
-        output = output.reshape(batch_size, max_frags, self.num_outputs, -1)
+        # B x L x Outs x (2 * mass shifts)
         pool_weights_reshaped = pool_weights.reshape(
-            batch_size, max_frags, self.num_outputs, -1
-        )
+            batch_size, self.num_outputs, max_frags, -1
+        ).transpose(1, 2)
         inverse_indices_reshaped = inverse_indices.reshape(
-            batch_size, max_frags, self.num_outputs, -1
-        )
+            batch_size, self.num_outputs, max_frags, -1
+        ).transpose(1, 2)
 
         # B x Outs x binned
         valid_pos_binned = ts.scatter_max(
@@ -650,7 +657,7 @@ class IntenGNN(pl.LightningModule):
 
         # Index into output binned using inverse_indices_reshaped
         # Revert the binned output back to frags for attribution
-        # B x Out x L x Mass shifts
+        # B x Out x (L * 2 * Mass shifts)
         inverse_indices_reshaped_temp = inverse_indices_reshaped.transpose(
             1, 2
         ).reshape(batch_size, self.num_outputs, -1)
@@ -699,29 +706,29 @@ class IntenGNN(pl.LightningModule):
             true_data_inds = batch["is_decoy"] == 0
             num_true_data = torch.sum(true_data_inds)
 
-            # the real cosine loss
-            cos_loss = loss_fn(pred_inten[true_data_inds], batch["inten_targs"][true_data_inds],
+            # the real spectrum loss (cosine or entropy)
+            spec_loss = loss_fn(pred_inten[true_data_inds], batch["inten_targs"][true_data_inds],
                                parent_mass=batch["precursor_mzs"][true_data_inds]
             )['loss']
 
             # contrastive ranking loss cosine loss to decoys
-            decoy_cos_loss = loss_fn(pred_inten,
-                                     batch["inten_targs"][true_data_inds].repeat_interleave(batch['mol_num'], dim=0),
-                                     parent_mass=batch["precursor_mzs"]
-            )['loss']
+            decoy_spec_loss = loss_fn(pred_inten,
+                                      batch["inten_targs"][true_data_inds].repeat_interleave(batch['mol_num'], dim=0),
+                                      parent_mass=batch["precursor_mzs"]
+                                      )['loss']
             split_end = torch.cumsum(batch['mol_num'], dim=0)
             split_start = split_end - batch['mol_num']
-            decoy_cos_loss = [decoy_cos_loss[s:e] for s, e in zip(split_start, split_end)]
-            decoy_cos_loss = torch.nn.utils.rnn.pad_sequence(decoy_cos_loss, batch_first=True, padding_value=1) # cos_loss <=1 by definition TODO need to rethink for entropy loss
-            decoy_cos_loss_sorted = torch.sort(decoy_cos_loss, dim=-1).values.detach()
-            ranking_dist = torch.abs(decoy_cos_loss[:, :, None] - decoy_cos_loss_sorted[:, None, :])
+            decoy_spec_loss = [decoy_spec_loss[s:e] for s, e in zip(split_start, split_end)]
+            decoy_spec_loss = torch.nn.utils.rnn.pad_sequence(decoy_spec_loss, batch_first=True, padding_value=1) # cos_loss <=1 by definition TODO need to rethink for entropy loss
+            decoy_spec_loss_sorted = torch.sort(decoy_spec_loss, dim=-1).values.detach()
+            ranking_dist = torch.abs(decoy_spec_loss[:, :, None] - decoy_spec_loss_sorted[:, None, :])
             top1_prob = pygm.sinkhorn(-ranking_dist, n1=batch["mol_num"], n2=batch["mol_num"], tau=self.sk_tau, backend='pytorch')[:, 0, 0]
             contr_loss = torch.relu(-torch.log(top1_prob + 0.5))  # shift & cut ce loss for probs > 0.5
 
             loss = {
-                "cos_loss": cos_loss,
+                "spec_loss": spec_loss,
                 "contr_loss": contr_loss,
-                "loss": cos_loss + contr_loss * self.contr_weight,
+                "loss": spec_loss + contr_loss * self.contr_weight,
             }
         else:
             loss = loss_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])
@@ -729,6 +736,12 @@ class IntenGNN(pl.LightningModule):
         self.log(
             f"{name}_loss", loss["loss"].item(), batch_size=batch_size, on_epoch=True
         )
+
+        if name == 'test':
+            loss.update({
+                'cos_loss': self.cos_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])['loss'].mean(),
+                'entr_loss': self.entropy_loss(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])['loss'].mean(),
+            })
 
         for k, v in loss.items():
             if k != "loss":
@@ -764,10 +777,3 @@ class IntenGNN(pl.LightningModule):
             },
         }
         return ret
-
-    @staticmethod
-    def get_quadratic_func_params(precursor_mz, collision, scale=0.01):
-        a = - 1 / precursor_mz ** 2
-        b = 2 * (1 / torch.exp(collision * scale)) / precursor_mz
-        c = 1 - (1 / torch.exp(collision * scale)) ** 2
-        return a, b, c

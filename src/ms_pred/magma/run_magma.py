@@ -194,8 +194,10 @@ def magma_augmentation(
         )
         s_m, s_i = spectrum[:, 0], spectrum[:, 1]
 
-        # Correct for s_m by subtracting it
-        adjusted_m = s_m - common.ion2mass[spectra_adduct]
+        # Correct for s_m to its [M]+ or [M]- mass
+        adjusted_m = s_m - common.ion2mass[spectra_adduct]  # charge on adduct
+        adjusted_e_m = s_m + common.ELECTRON_MASS if common.is_positive_adduct(spectra_adduct) \
+            else s_m - common.ELECTRON_MASS  # charge transferred
 
         # Step 3: Make all assignments
         frag_hashes, frag_inds, shift_inds, masses, scores = fe.get_frag_masses()
@@ -210,16 +212,17 @@ def magma_augmentation(
             masses[new_order],
             scores[new_order],
         )
-        ppm_diffs = (
-            np.abs(masses[None, :] - adjusted_m[:, None]) / adjusted_m[:, None] * 1e6
-        )
+        ppm_diffs = np.minimum(
+            np.abs(masses[None, :] - adjusted_m[:, None]) / masses[None, :] * 1e6,
+            np.abs(masses[None, :] - adjusted_e_m[:, None]) / masses[None, :] * 1e6
+        )  # num of peaks x num of frags
 
         # Need to catch _all_ equivalent fragments
         # How do I remove the symmetry problem at each step and avoid branching
         # trees for the same examples??
         min_ppms = ppm_diffs.min(-1)
         is_min = min_ppms[:, None] == ppm_diffs
-        peak_mask = min_ppms < ppm_diff
+        peak_mask = min_ppms < ppm_diff  # num of peaks
 
         # Step 4: Make exports
         # Now collect all inds and results
@@ -230,7 +233,7 @@ def magma_augmentation(
         for ind, was_assigned in enumerate(peak_mask):
             new_entry = {
                 "mz_observed": s_m[ind],
-                "mz_corrected": adjusted_m[ind],
+                # "mz_corrected": adjusted_m[ind],
                 "inten": s_i[ind],
                 "ppm_diff": "",
                 "frag_inds": "",
@@ -270,7 +273,7 @@ def magma_augmentation(
                 new_entry["frag_base_form"] = ",".join(frag_forms_temp)
                 peak_info_base = {
                     "mz_observed": s_m[ind],
-                    "mz_corrected": adjusted_m[ind],
+                    # "mz_corrected": adjusted_m[ind],
                     "inten": s_i[ind],
                     "ppm_diff": min_ppms[0],
                     "frag_mass": frag_masses_temp[0],
@@ -394,9 +397,10 @@ def magma_augmentation(
             out_frags[k]["parents"] = list(out_frags[k]["parents"])
 
         export_tree = {
-            "root_inchi": fe.inchi,
+            "root_canonical_smiles": fe.smiles,
             "frags": out_frags,
             "collision_energy": float(colli_eng.split()[1]),
+            "adduct": spectra_adduct,
         }
         # Export files when needed
         if len(export_tree["frags"]) > 0:

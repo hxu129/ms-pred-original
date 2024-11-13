@@ -15,7 +15,7 @@ universal_args:
   seed: [1]
   num-workers: [64]
   batch-size: [32]
-  max-epochs: [20]
+  max-epochs: [10]
   num-decoys: [3]
 
   dataset-name: [nist20]
@@ -39,6 +39,7 @@ universal_args:
   root-encode: [gnn]
   inject-early: [false]
 
+  include-unshifted-mz: [true]
   binned-targs: [true] 
   embed-adduct: [true]
   embed-collision: [true]

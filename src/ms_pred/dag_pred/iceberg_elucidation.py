@@ -188,7 +188,7 @@ def iceberg_prediction(
             ce = [common.nce_to_ev(e, precursor_mass) for e in collision_energies]
         else:
             ce = collision_energies
-        new_collision_energies.append([f'{int(_):.0f}' for _ in sorted(ce)])
+        new_collision_energies.append([f'{float(_):.0f}' for _ in sorted(ce)])
     collision_energies = new_collision_energies
 
     # generate temp directory
@@ -282,7 +282,7 @@ def load_real_spec(
     real_spec = {float(common.get_collision_energy(k)): v for k, v in real_spec.items()}
     if nce:
         real_spec = {common.nce_to_ev(k, precursor_mass): v for k, v in real_spec.items()}
-    real_spec = {f'{int(k):.0f}': v for k, v in real_spec.items()}
+    real_spec = {f'{float(k):.0f}': v for k, v in real_spec.items()}
     return real_spec
 
 
@@ -498,6 +498,8 @@ def explain_peaks(
     import ms_pred.magma.fragmentation as fragmentation
 
     real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm)
+    if 'step_collision_energy' in kwargs:
+        merge_spec = kwargs['step_collision_energy']
     if merge_spec:
         real_spec = common.merge_specs(real_spec)
     smiles, pred_specs, pred_frags = load_pred_spec(load_dir, merge_spec)
@@ -576,8 +578,9 @@ def modi_finder(
     mol_type1:str='smi',
     nce1:bool=False,
     nce2:bool=False,
+    mz_cutoff:float=1500,
     topk_peaks:int=10,
-    return_thresh:float=0.1,
+    top_score_thresh:float=0.1,
     step_collision_energy:bool=False,
     ppm:int=20,
     save_path: str = None,
@@ -601,9 +604,11 @@ def modi_finder(
         real_spec2: experiment spectrum of molecule 2
         real_spec_type2: type of spectrum 2 (see documentation for function ``load_real_spec`` for details)
         mol_type1: (default: 'smi') type of mol_str1. Could be 'smi', 'inchi', 'mol', 'inchikey'
+        mz_cutoff: (default: 1500) ignore peaks that has m/z larger than this value. Larger peaks sometimes introduces
+          ambiguity to structures because too many atoms are included.
         topk_peaks: (default: 10) top k peaks considered to score the modification sites
-        return_thresh: (default: 0.1) all sites higher than the score of max(scores) - return_thresh will be highlighted.
-            A larger return_thresh will result in more highlighted atoms.
+        top_score_thresh: (default: 0.1) all sites higher than the score of max(scores) - top_score_thresh will be
+            highlighted. A larger top_score_thresh will result in more highlighted atoms.
         nce1: (bool, default=False) if True, the collision energies are treated as normalized collision energy; otherwise, they are treated as absolute eV
         nce2: (bool, default=False) if True, the collision energies are treated as normalized collision energy; otherwise, they are treated as absolute eV
         step_collision_energy: (bool, default=False) if True, it means step_collision_energy is turned on in the instrument and only one merged spectrum will be returned
@@ -675,7 +680,8 @@ def modi_finder(
         mass_diff = common.formula_mass(formula_diff[1:])
     else:
         raise ValueError('formula_diff has to start with \'+\' or \'-\'!')
-    assert np.abs(precursor_mass1 + mass_diff - precursor_mass2) < precursor_mass1 * 1e-6 * ppm
+    assert np.abs(precursor_mass1 + mass_diff - precursor_mass2) < precursor_mass1 * 1e-6 * ppm, \
+        f'precursor_mass1={precursor_mass1}, precursor_mass2={precursor_mass2}, mass_diff={mass_diff}'
 
     interested_peaks = {}
     for ce, spec2 in real_spec2.items():
@@ -706,6 +712,8 @@ def modi_finder(
         sorted_idx = np.argsort(int_peaks[:, 1])[::-1]
         for i in sorted_idx:
             mz, inten = int_peaks[i]
+            if mz > mz_cutoff:
+                continue
             peak_matching = np.abs(mz - mass_diff - pred_spec[ce][:, 0]) < mz * 1e-6 * ppm
             plot_count = 0
             #covered_bitmap = 0
@@ -740,7 +748,7 @@ def modi_finder(
     plt.axis('off')
 
     common.plot_mol_as_vector(
-        engine.mol, hatoms=(np.where(atom_scores > atom_scores.max() - return_thresh)[0]).tolist(),
+        engine.mol, hatoms=(np.where(atom_scores > atom_scores.max() - top_score_thresh)[0]).tolist(),
         hbonds=None, atomcmap=matplotlib.colors.LinearSegmentedColormap.from_list('my_cmap', ['#A7B7C3', '#FFD593']), atomscores=atom_scores, ax=plt.gca()
     )
     all_figs.append(plt.gcf())
@@ -867,3 +875,53 @@ def generate_buyable_report(
     with PdfPages(f'{output_name}.pdf') as pdf:
         for fig in all_figs:
             pdf.savefig(fig, bbox_inches='tight')
+
+
+def form_from_mgf(
+    inp_mgf: str,
+    top_k_sirius_preds: int = 5,
+    profile: str = 'orbitrap',
+    ppm: int = 10,
+    sirius_path: str = '/home/roger/miniforge3/condabin/conda run -n ms-main sirius',
+    **kwargs
+):
+    """
+    Calculate chemical formula from MGF file
+
+    Args:
+        inp_mgf: path to mgf
+        top_k_sirius_preds: how many formula predictions are returned
+        profile: MS/MS profile (default: orbitrap)
+        ppm: (default: 10)
+        sirius_path: path to sirius runtime (default: local )
+
+    """
+    sirius_config_cmd = f'--ignore-formula --noCite formula ' \
+                        f'-p {profile} --ppm-max={ppm} write-summaries'
+    exp_hash = common.md5(inp_mgf) + '||' + sirius_config_cmd
+    out_dir = Path(user_cache_dir(f"ms-pred/sirius-out/{common.str_to_hash(exp_hash)}"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if not (out_dir / 'sirius_run_successful').exists():
+        sirius_command = (f'{sirius_path} -o {out_dir} '
+                          f'-i {inp_mgf} ' + sirius_config_cmd)
+        print("Running SIRIUS, command:\n" + sirius_command + "\n")
+        run_result = subprocess.run(sirius_command, shell=True)
+
+        if run_result.returncode == 0:  # successful
+            (out_dir / 'sirius_run_successful').touch()
+
+    feature_id_to_form = {}
+    for per_cmpd_out_dir in out_dir.glob('*'):
+        feature_id = per_cmpd_out_dir.stem.split('_')[-1]
+        sirius_cands_path = per_cmpd_out_dir / 'formula_candidates.tsv'
+        if sirius_cands_path.exists():
+            adduct_and_form = []
+            df = pd.read_csv(sirius_cands_path, sep='\t')
+            for idx, sirius_row in df.iterrows():
+                if idx >= top_k_sirius_preds:
+                    continue
+                adduct = sirius_row['adduct'].replace(" ", "")
+                adduct_and_form.append(dict(rnk=idx+1, adduct=adduct, form=sirius_row['molecularFormula']))
+            feature_id_to_form[feature_id] = adduct_and_form
+    return feature_id_to_form

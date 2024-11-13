@@ -81,6 +81,7 @@ def add_frag_train_args(parser):
         help="How to encode root of trees",
     )
     parser.add_argument("--inject-early", default=False, action="store_true")
+    parser.add_argument("--include-unshifted-mz", default=False, action="store_true")
     parser.add_argument("--binned-targs", default=False, action="store_true")
     parser.add_argument("--embed-adduct", default=False, action="store_true")
     parser.add_argument("--embed-collision", default=False, action="store_true")
@@ -236,6 +237,7 @@ def train_model():
         embed_adduct=kwargs["embed_adduct"],
         embed_collision=kwargs["embed_collision"],
         embed_elem_group=kwargs["embed_elem_group"],
+        include_unshifted_mz=kwargs["include_unshifted_mz"],
         binned_targs=binned_targs,
         encode_forms=kwargs["encode_forms"],
         add_hs=add_hs,

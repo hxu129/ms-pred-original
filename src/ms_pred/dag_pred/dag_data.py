@@ -141,8 +141,8 @@ class TreeProcessor:
                 the inten model
             last_row:
         """
-        root_inchi = tree["root_inchi"]
-        engine = fragmentation.FragmentEngine(mol_str=root_inchi, mol_str_type="inchi")
+        root_smiles = tree["root_canonical_smiles"]
+        engine = fragmentation.FragmentEngine(mol_str=root_smiles, mol_str_type="smiles", mol_str_canonicalized=True)
         # bottom_depth = engine.max_broken_bonds
         bottom_depth = engine.max_tree_depth
         if self.root_encode == "gnn":
@@ -153,11 +153,17 @@ class TreeProcessor:
             )
             root_repr = root_graph_dict["graph"]
         elif self.root_encode == "fp":
-            root_repr = common.get_morgan_fp_inchi(root_inchi)
+            root_repr = common.get_morgan_fp_smi(root_smiles)
         else:
             raise ValueError()
 
-        root_form = common.form_from_inchi(root_inchi)
+        root_form = common.form_from_smi(root_smiles)
+
+        # Two types of mass shifts: +adduct or +-electron
+        adduct_mass_shift = np.array([
+            common.ion2mass[tree["adduct"]],
+            -common.ELECTRON_MASS if common.is_positive_adduct(tree["adduct"]) else common.ELECTRON_MASS
+        ])
 
         # Need to include mass and inten targets here, maybe not necessary in
         # all cases?
@@ -216,7 +222,9 @@ class TreeProcessor:
         if include_targets:
             inten_targets = np.array(tree["raw_spec"])
 
-        masses = engine.shift_bucket_masses[None, :] + np.array(masses)[:, None]
+        masses = engine.shift_bucket_masses[None, None, :] + \
+                 adduct_mass_shift[None, :, None] + \
+                 np.array(masses)[:, None, None]
         max_remove_hs = np.array(max_remove_hs)
         max_add_hs = np.array(max_add_hs)
         max_broken = np.array(max_broken)
@@ -452,26 +460,6 @@ class DAGDataset(Dataset):
             self.name_to_dict[i]["magma_file"] = self.magma_map[i]
 
         logging.info(f"{len(self.df_sub)} of {len(self.df)} entries have {len(self.spec_names)} trees.")
-        #read_fn = lambda x: self.read_tree(self.load_tree(x))
-
-        # Read in all trees necessary in parallel
-        # Process trees jointly; sacrifice mmeory for speed
-        if False:
-            if self.num_workers > 0:
-                tree_outs = common.chunked_parallel(
-                    self.spec_names,
-                    read_fn,
-                    max_cpu=self.num_workers,
-                    chunks=min(len(self.spec_names) // 4, 50),
-                )
-                self.trees = [i["tree"] for i in tree_outs]
-                self.dgl_trees = [i["dgl_tree"] for i in tree_outs]
-
-            else:
-                tree_outs = [read_fn(i) for i in tqdm(self.spec_names)]
-                self.trees = [i["tree"] for i in tree_outs]
-                self.dgl_trees = [i["dgl_tree"] for i in tree_outs]
-            self.spec_name_to_tree = dict(zip(self.spec_names, self.trees))
 
         adduct_map = dict(self.df[["spec", "ionization"]].values)
         self.name_to_adduct = {
@@ -748,7 +736,7 @@ class IntenContrDataset(DAGDataset):
         num_workers=0,
         use_ray: bool = False,
         num_decoys: int = 7,
-        decoy_path: str = 'results/dag_nist20/split_1_rnd1/preds_train_100/decoy_tree_preds.hdf5',
+        decoy_path_pattern: str = 'results/dag_nist20/split_1_rnd1/preds_train_100/decoy_tree_preds/decoy_tree_preds_chunk_{}.hdf5',
         **kwargs,
     ):
         """__init__.
@@ -764,7 +752,9 @@ class IntenContrDataset(DAGDataset):
             num_workers=num_workers,
             use_ray=use_ray,
         )
-        self.decoy_path = decoy_path
+        self.decoy_path_pattern = decoy_path_pattern
+        self.all_h5_paths = list(Path(self.decoy_path_pattern).parent.glob(self.decoy_path_pattern.split('/')[-1].format('*')))
+        self.all_h5_nums = len(self.all_h5_paths)
         self.num_decoys = num_decoys
 
     @classmethod
@@ -819,7 +809,9 @@ class IntenContrDataset(DAGDataset):
 
         outlist = [outdict]
 
-        decoy_h5_obj = common.HDF5Dataset(self.decoy_path)
+        h5_idx = int(common.str_to_hash(spec_name), base=16) % self.all_h5_nums
+        decoy_path = self.decoy_path_pattern.format(h5_idx)
+        decoy_h5_obj = common.HDF5Dataset(decoy_path)
         if f'pred_{spec_name}' in decoy_h5_obj:
             colli_eng_h5obj = decoy_h5_obj[f'pred_{spec_name}']
             if f'collision {colli_eng}' in colli_eng_h5obj:
@@ -832,14 +824,16 @@ class IntenContrDataset(DAGDataset):
                     gen_pred = json.loads(decoy_h5_obj.read_str(h5_name))
 
                     # Filter out invalid entries
-                    engine = fragmentation.FragmentEngine(gen_pred['root_inchi'], mol_str_type="inchi")
+                    engine = fragmentation.FragmentEngine(
+                        gen_pred['root_canonical_smiles'], mol_str_type="smiles",
+                        mol_str_canonicalized=True)
                     root_frag_id = engine.get_root_frag()
                     frag_ids = [frag_entry['frag'] for frag_entry in gen_pred['frags'].values()]
                     if any([id > root_frag_id for id in frag_ids]):  # entry is invalid
                         logging.warning('Entry is invalid, skipping')
                         continue
 
-                    smi = common.smiles_from_inchi(gen_pred['root_inchi'])
+                    smi = gen_pred['root_canonical_smiles']
                     trees = self.tree_processor.process_tree_inten_pred(gen_pred)
                     decoy_entry = trees['dgl_tree']
                     decoy_entry.update(

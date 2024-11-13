@@ -83,6 +83,7 @@ for test_entry in test_entries:
     --dataset-labels {labels} \\
     --num-workers {num_workers} \\
     --gpu \\
+    --adduct-shift \\
     """
     if binned_out:
         cmd += "--binned-out"
