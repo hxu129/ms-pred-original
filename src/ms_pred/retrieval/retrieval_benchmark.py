@@ -105,7 +105,7 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
     true_npeaks = []
     ## sampled_evs = np.random.choice(evs, 3, p = ())
     if selected_evs:
-        true_spec_dict = {k: v for k, v in true_spec_dict.items() if int(k) in selected_evs}
+        true_spec_dict = {k: v for k, v in true_spec_dict.items() if str(k) in selected_evs}
     for idx, colli_eng in enumerate(true_spec_dict.keys()): # TODO: sample 
         cand_preds = np.stack([i[colli_eng] for i in cand_preds_dict], axis=0)
         true_spec = true_spec_dict[colli_eng]
