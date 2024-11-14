@@ -12,16 +12,11 @@ from rdkit import Chem
 from rdkit.Chem import Atom
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 from rdkit.Chem.Descriptors import ExactMolWt
-from rdkit.Chem.MolStandardize import rdMolStandardize
+from rdkit.Chem.MolStandardize.tautomer import TautomerCanonicalizer, TautomerTransform
 
 P_TBL = Chem.GetPeriodicTable()
 
 ROUND_FACTOR = 4
-FIX_H_IN_INCHI = False
-import os
-if 'FIX_H_IN_INCHI' in os.environ: # TEMP: change mol_to_inchi behavior by environment variable
-    if eval(os.environ['FIX_H_IN_INCHI']):
-        FIX_H_IN_INCHI = True
 
 ELECTRON_MASS = 0.00054858
 CHEM_FORMULA_SIZE = "([A-Z][a-z]*)([0-9]*)"
@@ -232,6 +227,11 @@ for ion in _ori_ions:
             ion2onehot_pos[eq_ion] = ion2onehot_pos[ion]
 
 
+def is_positive_adduct(adduct_str: str) -> bool:
+    """Check the adduct string is positive or negative (return True if positive)"""
+    return adduct_str[-1] == '+'
+
+
 def formula_to_dense(chem_formula: str) -> np.ndarray:
     """formula_to_dense.
 
@@ -396,7 +396,7 @@ def standardize_form(i):
 
 def get_mol_from_structure_string(structure_string, structure_type):
     if structure_type == "InChI":
-        mol = Chem.MolFromInchi(structure_string)
+        mol = canonical_mol_from_inchi(structure_string)
     else:
         mol = Chem.MolFromSmiles(structure_string)
     return mol
@@ -449,6 +449,23 @@ def uncharged_formula(mol, mol_type="mol") -> str:
     return re.findall(r"^([^\+,^\-]*)", chem_formula)[0]
 
 
+_TAUTOMER_TRANSFORMS = (
+    TautomerTransform('1,3 heteroatom H shift',
+                      '[#7,S,O,Se,Te;!H0]-[#7X2,#6,#15]=[#7,#16,#8,Se,Te]'),
+)
+
+
+def canonical_mol_from_inchi(inchi):
+    """Canonicalize mol after Chem.MolFromInchi
+    Note that this function may be 50 times slower than Chem.MolFromInchi"""
+    mol = Chem.MolFromInchi(inchi)
+    if mol is None:
+        return None
+    _molvs_t = TautomerCanonicalizer(transforms=_TAUTOMER_TRANSFORMS)
+    mol = _molvs_t.canonicalize(mol)
+    return mol
+
+
 def form_from_smi(smi: str) -> str:
     """form_from_smi.
 
@@ -477,7 +494,7 @@ def rm_stereo(mol: str, mol_type='smi') -> str:
     if mol_type == 'smi':
         mol = Chem.MolFromSmiles(mol)
     elif mol_type == 'inchi':
-        mol = Chem.MolFromInchi(mol)
+        mol = canonical_mol_from_inchi(mol)
     elif mol_type == 'mol':
         mol = mol
     else:
@@ -491,10 +508,7 @@ def rm_stereo(mol: str, mol_type='smi') -> str:
     if mol_type == 'smi':
         return Chem.MolToSmiles(mol)
     elif mol_type == 'inchi':
-        if FIX_H_IN_INCHI:
-            return Chem.MolToInchi(mol, options='/FIX_H')
-        else:
-            return Chem.MolToInchi(mol)
+        return Chem.MolToInchi(mol)
     else:
         return mol
 
@@ -527,10 +541,7 @@ def inchi_from_smiles(smi: str) -> str:
     if mol is None:
         return ""
     else:
-        if FIX_H_IN_INCHI:
-            return Chem.MolToInchi(mol, options='/FIX_H')
-        else:
-            return Chem.MolToInchi(mol)
+        return Chem.MolToInchi(mol)
 
 
 def smi_inchi_round_mol(smi: str) -> Chem.Mol:
@@ -546,11 +557,11 @@ def smi_inchi_round_mol(smi: str) -> Chem.Mol:
     if mol is None:
         return None
 
-    inchi = Chem.MolToInchi(mol, options='/FIX_H') if FIX_H_IN_INCHI else Chem.MolToInchi(mol)
+    inchi = Chem.MolToInchi(mol)
     if inchi is None:
         return None
 
-    mol = Chem.MolFromInchi(inchi)
+    mol = canonical_mol_from_inchi(inchi)
     return mol
 
 
@@ -563,7 +574,7 @@ def smiles_from_inchi(inchi: str) -> str:
     Returns:
         str:
     """
-    mol = Chem.MolFromInchi(inchi)
+    mol = canonical_mol_from_inchi(inchi)
     if mol is None:
         return ""
     else:
@@ -661,7 +672,7 @@ def sanitize(mol_list: List[Chem.Mol], mol_type='mol', return_indices=False) -> 
             continue
 
         try:
-            inchi = Chem.MolToInchi(mol, options='/FIX_H') if FIX_H_IN_INCHI else Chem.MolToInchi(mol)
+            inchi = Chem.MolToInchi(mol)
             mol = Chem.MolFromInchi(inchi)
             if mol is None:
                 continue
@@ -669,8 +680,8 @@ def sanitize(mol_list: List[Chem.Mol], mol_type='mol', return_indices=False) -> 
             mol = Chem.MolFromSmiles(smiles)
             if mol is None:
                 continue
-            inchi = Chem.MolToInchi(mol, options='/FIX_H') if FIX_H_IN_INCHI else Chem.MolToInchi(mol)
-            mol = Chem.MolFromInchi(inchi)
+            inchi = Chem.MolToInchi(mol)
+            mol = canonical_mol_from_inchi(inchi)
             if mol is not None:
                 new_mol_list.append(mol)
                 new_idx_list.append(idx)
@@ -680,7 +691,7 @@ def sanitize(mol_list: List[Chem.Mol], mol_type='mol', return_indices=False) -> 
     if mol_type == 'smi':
         new_mol_list = [Chem.MolToSmiles(mol) for mol in new_mol_list]
     elif mol_type == 'inchi':
-        new_mol_list = [Chem.MolToInchi(mol, options='/FIX_H') if FIX_H_IN_INCHI else Chem.MolToInchi(mol) for mol in new_mol_list]
+        new_mol_list = [Chem.MolToInchi(mol) for mol in new_mol_list]
 
     if return_indices:
         return new_mol_list, new_idx_list

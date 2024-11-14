@@ -77,8 +77,8 @@ def process_spec_file(spec_name, name_to_colli: dict, spec_dir: Path, num_bins: 
             return_dict[colli_label] = None
             continue
 
-        # Load without adduct involved
-        mz = loaded_json["output_tbl"]["formula_mass_no_adduct"]
+        # Load with adduct involved
+        mz = loaded_json["output_tbl"]["mono_mass"]
         inten = loaded_json["output_tbl"]["ms2_inten"]
         spec_ar = np.vstack([mz, inten]).transpose(1, 0)
         if binned_spec:

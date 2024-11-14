@@ -59,7 +59,7 @@ def process_spec_file(spec_name, num_bins: int, upper_limit: int, spec_dir: Path
         return None
 
     # Load without adduct involved
-    mz = loaded_json["output_tbl"]["formula_mass_no_adduct"]
+    mz = loaded_json["output_tbl"]["mono_mass"]
     inten = loaded_json["output_tbl"]["ms2_inten"]
     spec_ar = np.vstack([mz, inten]).transpose(1, 0)
     binned = common.bin_spectra([spec_ar], num_bins, upper_limit)

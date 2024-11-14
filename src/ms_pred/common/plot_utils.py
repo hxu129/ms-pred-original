@@ -176,6 +176,33 @@ def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title=
         plt.title(title)
 
 
+def plot_ms(spec, spec_name='spec', title='', dpi=300, ax=None):
+    if ax is None:
+        fig = plt.figure(figsize=(10, 3.5), dpi=dpi)
+    else:
+        plt.sca(ax)
+    largest_mz = 0
+    spec = np.array(spec).astype(np.float64)
+    spec[:, 1] = spec[:, 1] / spec[:, 1].max()
+    # spec[:, 1] = np.sqrt(spec[:, 1])
+    spec = spec[spec[:, 1] > 0.01]
+    largest_mz = max(largest_mz, spec[:, 0].max())
+    intensity_arr = spec[:, 1]
+    for mz, inten in zip(spec[:, 0], intensity_arr):
+        markerline, stemlines, baseline = plt.stem(mz, inten, 'k', markerfmt=" ")
+        plt.setp(stemlines, 'linewidth', 0.5)
+
+    plt.axhline(y=0, color='k', linestyle='-')
+    plt.ylabel(f'{spec_name} intensity')
+
+    ax = plt.gca()
+    ax.set_xlim(0, largest_mz * 1.05)
+    ax.set_ylim(0, 1.1)
+
+    if title:
+        plt.title(title)
+
+
 def _parse_svg_path_data(d, offset=(0, 0), zoom=(1, 1)):
     """Function to parse SVG path data into Matplotlib Path"""
     vertices = []

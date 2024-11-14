@@ -37,6 +37,7 @@ universal_args:
   root-encode: [gnn]
   inject-early: [false]
 
+  include-unshifted-mz: [true]
   binned-targs: [true]
   embed-adduct: [true]
   embed-collision: [true]

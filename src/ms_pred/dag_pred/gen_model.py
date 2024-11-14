@@ -432,6 +432,7 @@ class FragGNN(pl.LightningModule):
         device: str = "cpu",
         max_nodes: int = None,
         decode_final_step: bool = True,
+        canonical_root_smi: bool = False,
     ) -> List[dict]:
         """prdict_mol.
 
@@ -465,7 +466,7 @@ class FragGNN(pl.LightningModule):
         assert batch_size > 0
 
         # Step 1: Get a fragmentation engine for root mol
-        engine = [fragmentation.FragmentEngine(rsmi) for rsmi in root_smi]
+        engine = [fragmentation.FragmentEngine(rsmi, mol_str_canonicalized=canonical_root_smi) for rsmi in root_smi]
         max_depth = engine[0].max_tree_depth  # all max_depth should be the same
         root_frag = [e.get_root_frag() for e in engine]
         root_form = [common.form_from_smi(rsmi) for rsmi in root_smi]
@@ -716,7 +717,7 @@ class FragGNN(pl.LightningModule):
 
         # Formulate the result
         output = {
-            "root_inchi": data["root_inchi"],
+            "root_canonical_smiles": data["root_canonical_smiles"],
             "name": data["name"],
             "frags": frag_hash_to_entry,
             "collision_energy": data["collision_energy"],

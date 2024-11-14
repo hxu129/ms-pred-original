@@ -494,8 +494,8 @@ def bin_form_file(spec_file, num_bins, upper_limit) -> Tuple[dict, np.ndarray]:
     if loaded_json["output_tbl"] is None:
         return {}, None
 
-    # Load without adduct involved
-    mz = loaded_json["output_tbl"]["formula_mass_no_adduct"]
+    # Load with adduct involved
+    mz = loaded_json["output_tbl"]["mono_mass"]
     inten = loaded_json["output_tbl"]["ms2_inten"]
 
     # Don't renorm; already procesed prior!
@@ -773,6 +773,11 @@ def nce_to_ev(nce, precursor_mz):
         return int(round(ev))
     else:
         return float(ev)
+
+
+def ev_to_nce(ev, precursor_mz):
+    nce = ev * 500 / precursor_mz
+    return nce
 
 
 def md5(fname, chunk_size=4096):
