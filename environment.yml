@@ -1,13 +1,12 @@
 name: ms-gen
 channels:
 - pytorch
-- nvidia
-- dglteam/label/th21_cu118
+- dglteam
 - conda-forge
 - pyg
 - bioconda
 dependencies:
-- python=3.9.*
+- python=3.8.*
 - cython
 - matplotlib=3.4.*
 - rdkit=2021.03.*
@@ -16,14 +15,14 @@ dependencies:
 - pytorch-lightning=1.6.*
 - pip=21.2.*
 - ipykernel=6.0.*
-- pytorch::pytorch=2.1.*
-- pytorch::pytorch-cuda=11.8
+- pytorch::pytorch=1.9.1=py3.8_cuda11.1_cudnn8.0.5_0
+- cudatoolkit=11.1
 - einops
 - nb_conda_kernels=2.3.*
 - seaborn=0.11.*
 - ray-tune
 - pytorch-scatter
 - pytorch-sparse
-- matchms
-- dgl
 - pyg
+- dgl-cuda11.1=0.8.2
+- MKL=2024.0.0

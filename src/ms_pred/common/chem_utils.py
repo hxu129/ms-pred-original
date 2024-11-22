@@ -12,7 +12,17 @@ from rdkit import Chem
 from rdkit.Chem import Atom
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 from rdkit.Chem.Descriptors import ExactMolWt
-from rdkit.Chem.MolStandardize.tautomer import TautomerCanonicalizer, TautomerTransform
+try:
+    from rdkit.Chem.MolStandardize.tautomer import TautomerCanonicalizer, TautomerTransform
+    _RD_TAUTOMER_CANONICALIZER = 'v1'
+    _TAUTOMER_TRANSFORMS = (
+        TautomerTransform('1,3 heteroatom H shift',
+                          '[#7,S,O,Se,Te;!H0]-[#7X2,#6,#15]=[#7,#16,#8,Se,Te]'),
+        TautomerTransform('1,3 (thio)keto/enol r', '[O,S,Se,Te;X2!H0]-[C]=[C]'),
+    )
+except ModuleNotFoundError:
+    from rdkit.Chem.MolStandardize.rdMolStandardize import TautomerEnumerator  # newer rdkit
+    _RD_TAUTOMER_CANONICALIZER = 'v2'
 
 P_TBL = Chem.GetPeriodicTable()
 
@@ -449,20 +459,18 @@ def uncharged_formula(mol, mol_type="mol") -> str:
     return re.findall(r"^([^\+,^\-]*)", chem_formula)[0]
 
 
-_TAUTOMER_TRANSFORMS = (
-    TautomerTransform('1,3 heteroatom H shift',
-                      '[#7,S,O,Se,Te;!H0]-[#7X2,#6,#15]=[#7,#16,#8,Se,Te]'),
-)
-
-
 def canonical_mol_from_inchi(inchi):
     """Canonicalize mol after Chem.MolFromInchi
     Note that this function may be 50 times slower than Chem.MolFromInchi"""
     mol = Chem.MolFromInchi(inchi)
     if mol is None:
         return None
-    _molvs_t = TautomerCanonicalizer(transforms=_TAUTOMER_TRANSFORMS)
-    mol = _molvs_t.canonicalize(mol)
+    if _RD_TAUTOMER_CANONICALIZER == 'v1':
+        _molvs_t = TautomerCanonicalizer(transforms=_TAUTOMER_TRANSFORMS)
+        mol = _molvs_t.canonicalize(mol)
+    else:
+        _te = TautomerEnumerator()
+        mol = _te.Canonicalize(mol)
     return mol
 
 
