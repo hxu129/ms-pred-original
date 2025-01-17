@@ -90,7 +90,7 @@ def process_spec_file(spec_name, name_to_colli: dict, spec_dir: Path, num_bins: 
     return return_dict
 
 
-def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ignore_peak=None, func='cos', selected_evs=None) -> np.ndarray:
+def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ignore_peak=None, func='cos', selected_evs=None, agg=True) -> np.ndarray:
     """cos_dist for binned spectrum
 
     Args:
@@ -185,7 +185,12 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
     # weights = np.ones(dist.shape[0])
     weights = weights / weights.sum()
 
-    return np.sum(dist * weights[:, None], axis=0)  # number of candidates
+    if agg:
+        return np.sum(dist * weights[:, None], axis=0)  # number of candidates
+    else:
+        # return both
+        dist = dist[weights > 0] # exclude any objectives that have zero-weights based on filter
+        return dist, np.sum(dist * weights[:, None], axis=0)  # number of candidates
 
 # define cosine/entropy functions
 cos_dist_bin = partial(dist_bin, func='cos')
