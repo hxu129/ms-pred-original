@@ -22,6 +22,9 @@ except ImportError: # pytorch_lightning >= 1.9
     from pytorch_lightning.loggers.logger import Logger, rank_zero_experiment
 from pytorch_lightning.utilities import rank_zero_only
 
+NIST_COLLISION_ENERGY_MEAN = 40.260853377886264
+NIST_COLLISION_ENERGY_STD = 31.604227557486197
+
 
 def get_data_dir(dataset_name: str) -> Path:
     return Path("data/spec_datasets") / dataset_name
@@ -378,7 +381,7 @@ def parse_cfm_out(spectra_file: str, max_merge=False) -> Tuple[dict, pd.DataFram
     sub_h = lambda x: chem_utils.formula_difference(x, "H") if "H" in x else x
     less_h = [sub_h(i) for i in full_spec["form"].values]
     full_spec["form_no_h"] = less_h
-    full_spec["formula_mass_no_adduct"] = [chem_utils.formula_mass(i) for i in less_h]
+    full_spec["formula_mass"] = [chem_utils.formula_mass(i) for i in full_spec["form"].values]
     full_spec["ionization"] = "[M+H]+"
     return meta_data, full_spec
 
@@ -416,6 +419,16 @@ def merge_intens(spec_dict):
         merged_intens += spec
     merged_intens = merged_intens / merged_intens.max()
     return {'nan': merged_intens}
+
+
+def merge_mz(mzs, ppm=20):
+    if not isinstance(mzs, float) and mzs is not None:
+        if (max(mzs) - min(mzs)) / max(mzs) * 1e6 > ppm:
+            raise ValueError(f'mass difference is larger than threshold ppm={ppm}. Got {mzs}')
+        mz = np.mean(mzs).item()
+        return mz
+    else:  # is float
+        return mzs
 
 def process_spec_file(meta, tuples, precision=4, merge_specs=True, exclude_parent=False):
     """process_spec_file."""
@@ -478,11 +491,16 @@ def process_spec_file(meta, tuples, precision=4, merge_specs=True, exclude_paren
             new_specs[k] = new_spec
         return new_specs
 
-def bin_form_file(spec_file, num_bins, upper_limit) -> Tuple[dict, np.ndarray]:
-    """bin_form_file.
+def bin_from_file(spec_file, num_bins, upper_limit) -> Tuple[dict, np.ndarray]:
+    """bin_from_file.
+    """
+    return bin_from_str(open(spec_file, 'r').read(), num_bins, upper_limit)
 
+
+def bin_from_str(spec_str, num_bins, upper_limit) -> Tuple[dict, np.ndarray]:
+    """bin_from_str
     Args:
-        spec_file:
+        spec_str:
         num_bins:
         upper_limit:
 
@@ -490,7 +508,7 @@ def bin_form_file(spec_file, num_bins, upper_limit) -> Tuple[dict, np.ndarray]:
         Tuple[dict, np.ndarray]:
     """
 
-    loaded_json = json.load(open(spec_file, "r"))
+    loaded_json = json.loads(spec_str)
     if loaded_json["output_tbl"] is None:
         return {}, None
 
@@ -682,6 +700,29 @@ def bin_peak_results(
         if num_peaks <= j and num_peaks > i:
             return m_str
 
+def bin_collision_results(
+    collision_energy,
+    bins=[
+        (0, 10),
+        (10, 20),
+        (20, 30),
+        (30, 40),
+        (50, 100),
+        (100, 1000),
+    ],
+):
+    """bin_collision_results.
+
+    Use to stratify results
+    """
+    collision_energy = float(collision_energy)
+    if f'{collision_energy:.0f}' == 'nan':
+        return "null"
+    for i, j in bins:
+        m_str = f"{i} - {j}"
+        if collision_energy <= j and collision_energy > i:
+            return m_str
+
 
 def batches(it, chunk_size: int):
     """Consume an iterable in batches of size chunk_size""" ""
@@ -790,3 +831,22 @@ def md5(fname, chunk_size=4096):
 
 def str_to_hash(inp_str, digest_size=16):
     return hashlib.blake2b(inp_str.encode("ascii"), digest_size=digest_size).hexdigest()
+
+
+def rm_collision_str(key: str) -> str:
+    """remove `_collision VALUE` from the string"""
+    keys = key.split('_collision')
+    if len(keys) == 2:
+        return keys[0]
+    elif len(keys) == 1:
+        return key
+    else:
+        raise ValueError(f'Unrecognized key: {key}')
+
+
+def is_iterable(obj):
+    try:
+        iter(obj)
+        return True
+    except TypeError:
+        return False

@@ -18,15 +18,12 @@ from rdkit.Chem import Draw
 
 legend_params = dict(frameon=False, facecolor="none", fancybox=False)
 method_colors = {
-    "Random": "#808080",
-    "CFM-ID": "#C2AF53",
-    "3DMolMS": "#A56F8F",
-    "MassFormer": "#4C0027",
-    "FixedVocab": "#41644A",
-    "NEIMS (FFN)": "#B94346",
-    "NEIMS (GNN)": "#DB8F76",
-    "SCARF": "#479394",
-    "ICEBERG": "#3D4A9F",
+    "CFM-ID": "#D7D7D7",
+    "MassFormer": "#7C9D97",
+    "Graff-MS": "#A7B7C3",
+    "FraGNNet": "#7B94CC",
+    "ICEBERG (GLC'24)": "#E9B382",
+    "ICEBERG (Ours)": "#FFD593",
 }
 
 # List all marker symbols in list in commnet
@@ -34,14 +31,12 @@ method_colors = {
 # markers: [".", ",", "o", "v", "^", "<", ">", "1", "2", "3", "4", "8", "s",]
 
 method_markers = {
-    "Random": "<",
-    "3DMolMS": ".",
-    "FixedVocab": "s",
-    "MassFormer": ">",
-    "NEIMS (FFN)": "x",
-    "NEIMS (GNN)": "v",
-    "SCARF": "o",
-    "ICEBERG": "^",
+    "CFM-ID": ".",
+    "MassFormer": "<",
+    "Graff-MS": "v",
+    "FraGNNet": ">",
+    "ICEBERG (GLC'24)": "x",
+    "ICEBERG (Ours)": "o",
 }
 
 plt_dataset_names = {"canopus_train_public": "NPLIB1", "nist20": "NIST20"}
@@ -103,6 +98,11 @@ def set_style():
     """set_style"""
     mpl.rcParams["pdf.fonttype"] = 42
     mpl.rcParams["font.family"] = "sans-serif"
+    mpl.rcParams['font.sans-serif'] = 'Arial'
+    # If Arial did not show up:
+    # 1) install Microsoft fonts: sudo apt-get install ttf-mscorefonts-installer
+    # 2) clear local cache: fc-cache -f -v && rm -r .cache/matplotlib/*
+    # 3) restart Python environment
     sns.set(context="paper", style="ticks")
     mpl.rcParams["text.color"] = "black"
     mpl.rcParams["axes.labelcolor"] = "black"
@@ -112,19 +112,29 @@ def set_style():
     mpl.rcParams["ytick.color"] = "black"
     mpl.rcParams["xtick.major.size"] = 2.5
     mpl.rcParams["ytick.major.size"] = 2.5
+    mpl.rcParams["xtick.minor.size"] = 2.0
+    mpl.rcParams["ytick.minor.size"] = 2.0
 
     mpl.rcParams["xtick.major.width"] = 0.45
     mpl.rcParams["ytick.major.width"] = 0.45
+    mpl.rcParams["xtick.minor.width"] = 0.45
+    mpl.rcParams["ytick.minor.width"] = 0.45
+    mpl.rcParams['xtick.direction'] = 'out'
+    mpl.rcParams['ytick.direction'] = 'in'
+    mpl.rcParams['xtick.major.pad'] = 1
+    mpl.rcParams['ytick.major.pad'] = 1
+    mpl.rcParams['xtick.minor.pad'] = 1
+    mpl.rcParams['ytick.minor.pad'] = 1
 
     mpl.rcParams["axes.edgecolor"] = "black"
     mpl.rcParams["axes.linewidth"] = 0.45
-    mpl.rcParams["font.size"] = 9
-    mpl.rcParams["axes.labelsize"] = 9
-    mpl.rcParams["axes.titlesize"] = 9
-    mpl.rcParams["figure.titlesize"] = 9
-    mpl.rcParams["figure.titlesize"] = 9
+    mpl.rcParams["font.size"] = 8
+    mpl.rcParams["axes.labelsize"] = 8
+    mpl.rcParams["axes.titlesize"] = 8
+    mpl.rcParams["figure.titlesize"] = 8
+    mpl.rcParams["figure.titlesize"] = 8
     mpl.rcParams["legend.fontsize"] = 6
-    mpl.rcParams["legend.title_fontsize"] = 9
+    mpl.rcParams["legend.title_fontsize"] = 8
     mpl.rcParams["xtick.labelsize"] = 6
     mpl.rcParams["ytick.labelsize"] = 6
 
@@ -146,29 +156,42 @@ def set_size(w, h, ax=None):
     ax.figure.set_size_inches(figw, figh)
 
 
-def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title='', dpi=300, ppm=20, ax=None):
+def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title='', dpi=300, ppm=20, ax=None, largest_mz=None):
     if ax is None:
-        fig = plt.figure(figsize=(10, 7), dpi=dpi)
+        fig = plt.figure(figsize=(6, 4), dpi=dpi)
+        ax = plt.gca()
     else:
         plt.sca(ax)
-    largest_mz = 0
+    if largest_mz is None:
+        largest_mz = 0
     for idx, spec in enumerate((spec1, spec2)):
         spec = np.array(spec).astype(np.float64)
         spec[:, 1] = spec[:, 1] / spec[:, 1].max()
-        # spec[:, 1] = np.sqrt(spec[:, 1])
         spec = spec[spec[:, 1] > 0.01]
         largest_mz = max(largest_mz, spec[:, 0].max())
         intensity_arr = spec[:, 1] if idx == 0 else -spec[:, 1]
         for mz, inten in zip(spec[:, 0], intensity_arr):
             mz_in_spec1 = np.min(np.abs(mz - spec1[:, 0])) / mz < 1e-6 * ppm
             mz_in_spec2 = np.min(np.abs(mz - spec2[:, 0])) / mz < 1e-6 * ppm
-            markerline, stemlines, baseline = plt.stem(mz, inten, 'g' if mz_in_spec1 and mz_in_spec2 else 'k', markerfmt=" ")
+            color = '#7C9D97' if mz_in_spec1 and mz_in_spec2 else '#58595B'
+            markerline, stemlines, baseline = plt.stem(mz, inten, color, markerfmt=" ", basefmt=" ")
             plt.setp(stemlines, 'linewidth', 0.5)
 
-    plt.axhline(y=0, color='k', linestyle='-')
-    plt.ylabel(f'{spec2_name} intensity' + ' ' * 30 + f'{spec1_name} intensity')
+    plt.axhline(y=0, color='k', linestyle='-', linewidth=0.45)
+    plt.ylabel('intensity', rotation=0)
+    ax.yaxis.set_label_coords(-0.02, 1.02)
+    plt.text(-0.07, 0.5, spec1_name, rotation=90, rotation_mode='anchor',
+             verticalalignment='bottom', horizontalalignment='center', transform=ax.get_yaxis_transform())
+    plt.text(-0.07, -0.5, spec2_name, rotation=90, rotation_mode='anchor',
+             verticalalignment='bottom', horizontalalignment='center', transform=ax.get_yaxis_transform())
+    plt.xlabel('m/z', rotation=0)
+    ax.xaxis.set_label_coords(1.02, -0.01)
 
-    ax = plt.gca()
+    ax.set_yticks(ticks=[-1, 0, 1])
+    ax.set_yticklabels(['1.0', '0.0', '1.0'])
+    ax.set_yticks(ticks=[-0.5, 0.5], minor=True)
+    ax.set_yticklabels(['0.5', '0.5'], minor=True)
+
     ax.set_xlim(0, largest_mz * 1.05)
     ax.set_ylim(-1.1, 1.1)
 
@@ -176,26 +199,37 @@ def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title=
         plt.title(title)
 
 
-def plot_ms(spec, spec_name='spec', title='', dpi=300, ax=None):
+def plot_ms(spec, spec_name='spec', title='', dpi=300, ax=None, largest_mz=None):
     if ax is None:
-        fig = plt.figure(figsize=(10, 3.5), dpi=dpi)
+        fig = plt.figure(figsize=(6, 2), dpi=dpi)
+        ax = plt.gca()
     else:
         plt.sca(ax)
-    largest_mz = 0
     spec = np.array(spec).astype(np.float64)
     spec[:, 1] = spec[:, 1] / spec[:, 1].max()
-    # spec[:, 1] = np.sqrt(spec[:, 1])
     spec = spec[spec[:, 1] > 0.01]
-    largest_mz = max(largest_mz, spec[:, 0].max())
+    if largest_mz is None:
+        largest_mz = 0
+        largest_mz = max(largest_mz, spec[:, 0].max())
     intensity_arr = spec[:, 1]
     for mz, inten in zip(spec[:, 0], intensity_arr):
-        markerline, stemlines, baseline = plt.stem(mz, inten, 'k', markerfmt=" ")
+        markerline, stemlines, baseline = plt.stem(mz, inten, '#58595B', markerfmt=" ", basefmt=" ")
         plt.setp(stemlines, 'linewidth', 0.5)
 
-    plt.axhline(y=0, color='k', linestyle='-')
-    plt.ylabel(f'{spec_name} intensity')
+    plt.axhline(y=0, color='k', linestyle='-', linewidth=0.45)
+    plt.ylabel(f'intensity', rotation=0)
+    ax.yaxis.set_label_coords(-0.02, 1.02)
 
-    ax = plt.gca()
+    plt.text(-0.07, 0.5, spec_name, rotation=90, rotation_mode='anchor',
+             verticalalignment='bottom', horizontalalignment='center', transform=ax.get_yaxis_transform())
+    plt.xlabel('m/z', rotation=0)
+    ax.xaxis.set_label_coords(1.02, -0.01)
+
+    ax.set_yticks(ticks=[0, 1])
+    ax.set_yticklabels(['0.0', '1.0'])
+    ax.set_yticks(ticks=[0.5], minor=True)
+    ax.set_yticklabels(['0.5'], minor=True)
+
     ax.set_xlim(0, largest_mz * 1.05)
     ax.set_ylim(0, 1.1)
 
