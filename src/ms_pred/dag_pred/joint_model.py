@@ -146,8 +146,6 @@ class JointModel(pl.LightningModule):
         max_remove_hs = safe_device(batch["max_remove_hs"])
         max_add_hs = safe_device(batch["max_add_hs"])
         masses = safe_device(batch["masses"])
-        if not self.inten_model_obj.include_unshifted_mz:
-            masses = masses[:, :, :1, :].contiguous()  # only keep m/z with adduct shift
 
         assert adduct_shift, 'adduct shift must be enforced'
 
@@ -179,6 +177,8 @@ class JointModel(pl.LightningModule):
             out = inten_preds
         else:
             out = {"spec": [], "frag": []}
+            if not self.inten_model_obj.include_unshifted_mz:
+                masses = masses[:, :, :1, :].contiguous()  # only keep m/z with adduct shift
             for inten_pred, mass, inten_frag_id, out_tree, n in \
                     zip(inten_preds["spec"], masses.cpu().numpy(), inten_frag_ids, out_trees, num_frags.cpu().numpy()):
                 out["spec"].append(np.stack((mass[:n].reshape(-1), inten_pred.reshape(-1)), axis=1))
