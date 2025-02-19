@@ -41,6 +41,7 @@ class IntenGNN(pl.LightningModule):
         embed_adduct: bool = False,
         embed_collision: bool = False,
         embed_elem_group: bool = False,
+        embed_instrument: bool = False, 
         include_unshifted_mz: bool = False,
         binned_targs: bool = True,
         encode_forms: bool = False,
@@ -59,6 +60,7 @@ class IntenGNN(pl.LightningModule):
         self.inject_early = inject_early
         self.embed_adduct = embed_adduct
         self.embed_collision = embed_collision
+        self.embed_instrument = embed_instrument
         self.embed_elem_group = embed_elem_group
         self.include_unshifted_mz = include_unshifted_mz
         self.binned_targs = binned_targs
@@ -147,13 +149,21 @@ class IntenGNN(pl.LightningModule):
             self.collision_embed_merged = nn.Parameter(torch.zeros(pe_dim))
             self.collision_embed_merged.requires_grad = False
 
+        instrument_shift = 0
+        if self.embed_instrument:
+            instrument_types = len(set(common.instrument2onehot_pos.values()))
+            onehot_types = torch.eye(instrument_types)
+            self.instrument_embedder = nn.Parameter(onehot_types.float())
+            self.instrument_embedder.requires_grad = False
+            instrument_shift = instrument_types
+
         # Define network
         self.gnn = nn_utils.MoleculeGNN(
             hidden_size=self.hidden_size,
             num_step_message_passing=self.gnn_layers,
             set_transform_layers=self.set_layers,
             mpnn_type=self.mpnn_type,
-            gnn_node_feats=node_feats + adduct_shift + collision_shift,
+            gnn_node_feats=node_feats + adduct_shift + collision_shift + instrument_shift,
             gnn_edge_feats=edge_feats,
             dropout=self.dropout,
         )
@@ -344,9 +354,10 @@ class IntenGNN(pl.LightningModule):
         ind_maps,
         num_frags,
         max_breaks,
-        adducts,
-        collision_engs,
-        precursor_mzs,
+        adducts=None,
+        collision_engs=None,
+        instruments=None,
+        precursor_mzs=None,
         max_add_hs=None,
         max_remove_hs=None,
         masses=None,
@@ -364,6 +375,7 @@ class IntenGNN(pl.LightningModule):
             max_breaks (_type_): _description_
             adducts (_type_): _description_
             collision_engs (_type_): _description_
+            instruments (_type_): _description_
             precursor_mzs (_type_): _description_
             max_add_hs (_type_, optional): _description_. Defaults to None.
             max_remove_hs (_type_, optional): _description_. Defaults to None.
@@ -386,6 +398,7 @@ class IntenGNN(pl.LightningModule):
             num_frags,
             adducts=adducts,
             collision_engs=collision_engs,
+            instruments=instruments,
             precursor_mzs=precursor_mzs,
             broken=max_breaks,
             max_add_hs=max_add_hs,
@@ -429,7 +442,8 @@ class IntenGNN(pl.LightningModule):
         broken,
         collision_engs,
         precursor_mzs,
-        adducts,
+        adducts=None,
+        instruments=None,
         max_add_hs=None,
         max_remove_hs=None,
         masses=None,
@@ -462,7 +476,10 @@ class IntenGNN(pl.LightningModule):
         device = num_frags.device
 
         # if root fingerprints:
-        embed_adducts = self.adduct_embedder[adducts.long()]
+        if self.embed_adduct:
+            embed_adducts = self.adduct_embedder[adducts.long()]
+        if self.embed_instrument:
+            embed_instruments = self.instrument_embedder[instruments.long()]
         if self.root_encode == "fp":
             root_embeddings = self.root_module(root_repr)
             raise NotImplementedError()
@@ -475,6 +492,7 @@ class IntenGNN(pl.LightningModule):
                     ndata = root_repr.ndata["h"]
                     ndata = torch.cat([ndata, embed_adducts_expand], -1)
                     root_repr.ndata["h"] = ndata
+
                 if self.embed_collision:
                     embed_collision = torch.cat(
                         (torch.sin(collision_engs.unsqueeze(1) / self.collision_embedder_denominators.unsqueeze(0)),
@@ -489,6 +507,24 @@ class IntenGNN(pl.LightningModule):
                     )
                     ndata = root_repr.ndata["h"]
                     ndata = torch.cat([ndata, embed_collision_expand], -1)
+                    root_repr.ndata["h"] = ndata
+
+                if self.embed_instrument:
+
+                    # TODO: should I account for nan:
+                    # self.instrument_nansub = nn.Parameter(torch.zeros(len(set(common.instrument2onehot_pos.values()))))
+                    # self.instrument_nansub.requires_grad = False
+
+                    # embed_instruments = torch.where(torch.isnan(embed_instruments), 
+                    #                                 self.instrument_nansub.unsqueeze(0),
+                    #                                 embed_instruments
+                    # )
+                    embed_instruments_expand = embed_instruments.repeat_interleave(
+                        root_repr.batch_num_nodes(), 0
+                    )
+
+                    ndata = root_repr.ndata["h"]
+                    ndata = torch.cat([ndata, embed_instruments_expand], -1)
                     root_repr.ndata["h"] = ndata
                 root_embeddings = self.root_module(root_repr)
                 root_embeddings = self.pool(root_repr, root_embeddings)
@@ -520,6 +556,13 @@ class IntenGNN(pl.LightningModule):
                 collision_mapped, graphs.batch_num_nodes(), dim=0
             )
             concat_list.append(collision_exp)
+
+        if self.embed_instrument:
+            instruments_mapped = embed_instruments[ind_maps]
+            instruments_exp = torch.repeat_interleave(
+                instruments_mapped, graphs.batch_num_nodes(), dim=0
+            )
+            concat_list.append(instruments_exp)
 
         with graphs.local_scope():
             graphs.ndata["h"] = torch.cat(concat_list, -1).float()
@@ -679,6 +722,7 @@ class IntenGNN(pl.LightningModule):
             batch["num_frags"],
             broken=batch["broken_bonds"],
             adducts=batch["adducts"],
+            instruments=batch["instruments"] if self.embed_instrument else None,
             collision_engs=batch["collision_engs"],
             precursor_mzs=batch["precursor_mzs"],
             max_remove_hs=batch["max_remove_hs"],

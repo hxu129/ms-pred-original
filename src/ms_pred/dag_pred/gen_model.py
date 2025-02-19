@@ -191,7 +191,7 @@ class FragGNN(pl.LightningModule):
                     num_step_message_passing=self.layers,
                     set_transform_layers=self.set_layers,
                     mpnn_type=self.mpnn_type,
-                    gnn_node_feats=orig_node_feats + adduct_shift,
+                    gnn_node_feats=orig_node_feats + adduct_shift, # TODO: why not ev or instrument?
                     gnn_edge_feats=edge_feats,
                     dropout=self.dropout,
                 )

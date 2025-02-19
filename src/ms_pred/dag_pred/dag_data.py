@@ -744,8 +744,8 @@ class IntenDataset(DAGDataset):
             "max_remove_hs": max_remove_hs_padded,
             "inten_frag_ids": inten_frag_ids,
             "adducts": adducts if supply_adduct else None,
-            "collision_engs": collision_engs if supply_adduct else None,
-            "instruments": instruments,
+            "collision_engs": collision_engs,
+            "instruments": instruments if supply_instrument else None,
             "precursor_mzs": precursor_mzs,
             "root_form_vecs": root_vecs,
             "frag_form_vecs": form_vecs,
@@ -826,12 +826,13 @@ class IntenContrDataset(DAGDataset):
         name = self.spec_names[idx]
         spec_name = '_'.join(name.split('_')[:-1])  # remove collision energy label
         adduct = self.name_to_adducts[name]
+        instrument = self.name_to_instruments[name]
         precursor = self.name_to_precursors[name]
         dataset_smi = self.name_to_smiles[name]
 
         dgl_entry = self.read_fn(name)["dgl_tree"]
         colli_eng = common.get_collision_energy(name)
-        outdict = {"name": name, "adduct": adduct, "precursor": precursor, 'smiles': dataset_smi, 'decoy': 0}
+        outdict = {"name": name, "adduct": adduct, "precursor": precursor, 'instrument': instrument, 'smiles': dataset_smi, 'decoy': 0}
 
         # Convert this into a list of graphs with a list of targets
         outdict.update(dgl_entry)
