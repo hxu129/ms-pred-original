@@ -70,6 +70,7 @@ def add_frag_train_args(parser):
     parser.add_argument("--inject-early", default=False, action="store_true")
     parser.add_argument("--embed-adduct", default=False, action="store_true")
     parser.add_argument("--embed-collision", default=False, action="store_true")
+    parser.add_argument("--embed-instrument", default=False, action="store_true")
     parser.add_argument("--embed-elem-group", default=False, action="store_true")
     parser.add_argument("--encode-forms", default=False, action="store_true")
     parser.add_argument("--add-hs", default=False, action="store_true")
@@ -139,6 +140,7 @@ def train_model():
     pe_embed_k = kwargs["pe_embed_k"]
     root_encode = kwargs["root_encode"]
     embed_elem_group = kwargs["embed_elem_group"]
+    # TODO: do we need to consider whether Tree would look different based on instrument type
     tree_processor = dag_data.TreeProcessor(
         pe_embed_k=pe_embed_k, root_encode=root_encode, add_hs=add_hs, embed_elem_group=embed_elem_group,
     )
@@ -179,6 +181,7 @@ def train_model():
         persistent_workers=persistent_workers,
         multiprocessing_context=mp_contex,
     )
+    # get example entry from train loader
     val_loader = DataLoader(
         val_dataset,
         num_workers=kwargs["num_workers"],
@@ -197,6 +200,7 @@ def train_model():
         persistent_workers=persistent_workers,
         multiprocessing_context=mp_contex,
     )
+    
 
     # Define model
     model = gen_model.FragGNN(
@@ -215,6 +219,7 @@ def train_model():
         inject_early=kwargs["inject_early"],
         embed_adduct=kwargs["embed_adduct"],
         embed_collision=kwargs["embed_collision"],
+        embed_instrument=kwargs["embed_instrument"],
         embed_elem_group=kwargs["embed_elem_group"],
         encode_forms=kwargs["encode_forms"],
         add_hs=add_hs,

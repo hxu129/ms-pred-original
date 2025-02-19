@@ -237,6 +237,12 @@ for ion in _ori_ions:
             ion2onehot_pos[eq_ion] = ion2onehot_pos[ion]
 
 
+instrument2onehot_pos = {
+    "Orbitrap": 0,
+    "QTOF": 1, # Streamline upstream preprocessing to make QToF count here too 
+}
+
+
 def is_positive_adduct(adduct_str: str) -> bool:
     """Check the adduct string is positive or negative (return True if positive)"""
     return adduct_str[-1] == '+'
