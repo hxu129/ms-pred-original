@@ -598,13 +598,15 @@ class GenDataset(DAGDataset):
         max_broken = [torch.LongTensor(i["max_broken"]) for i in input_list]
         max_broken = torch.cat(max_broken)
 
-        # TODO: consider OHE upstream to reduce memory of batch size
+        supply_adduct = "adduct" in input_list[0]
+        if supply_adduct:
+            adducts = [j["adduct"] for j in input_list]
+            adducts = torch.FloatTensor(adducts)
 
-        adducts = [j["adduct"] for j in input_list]
-        adducts = torch.FloatTensor(adducts)
-
-        instruments = [j["instrument"] for j in input_list]
-        instruments = torch.FloatTensor(instruments)
+        supply_instrument = "instrument" in input_list[0]
+        if supply_instrument:
+            instruments = [j["instrument"] for j in input_list]
+            instruments = torch.FloatTensor(instruments)
 
         collision_engs = [float(j["collision_energy"]) for j in input_list]
         collision_engs = torch.FloatTensor(collision_engs)
@@ -623,9 +625,9 @@ class GenDataset(DAGDataset):
             "frag_atoms": frag_atoms,
             "inds": root_inds,
             "broken_bonds": max_broken,
-            "adducts": adducts,
+            "adducts": adducts if supply_adduct else None,
             "collision_engs": collision_engs,
-            "instruments": instruments,
+            "instruments": instruments if supply_instrument else None,
             "precursor_mzs": precursor_mzs,
             "root_form_vecs": root_vecs,
             "frag_form_vecs": form_vecs,
@@ -708,11 +710,15 @@ class IntenDataset(DAGDataset):
         max_broken = [torch.LongTensor(i["max_broken"]) for i in input_list]
         broken_padded = torch.nn.utils.rnn.pad_sequence(max_broken, batch_first=True)
 
-        adducts = [j["adduct"] for j in input_list]
-        adducts = torch.FloatTensor(adducts)
-
-        instruments = [j["instrument"] for j in input_list]
-        instruments = torch.FloatTensor(instruments)
+        supply_adduct = "adduct" in input_list[0]
+        if supply_adduct:
+            adducts = [j["adduct"] for j in input_list]
+            adducts = torch.FloatTensor(adducts)
+        
+        supply_instrument = "instrument" in input_list[0]
+        if supply_instrument:
+            instruments = [j["instrument"] for j in input_list]
+            instruments = torch.FloatTensor(instruments)
 
         collision_engs = [float(j["collision_energy"]) for j in input_list]
         collision_engs = torch.FloatTensor(collision_engs)
@@ -737,8 +743,8 @@ class IntenDataset(DAGDataset):
             "max_add_hs": max_add_hs_padded,
             "max_remove_hs": max_remove_hs_padded,
             "inten_frag_ids": inten_frag_ids,
-            "adducts": adducts,
-            "collision_engs": collision_engs,
+            "adducts": adducts if supply_adduct else None,
+            "collision_engs": collision_engs if supply_adduct else None,
             "instruments": instruments,
             "precursor_mzs": precursor_mzs,
             "root_form_vecs": root_vecs,
