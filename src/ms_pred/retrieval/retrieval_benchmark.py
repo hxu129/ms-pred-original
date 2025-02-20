@@ -90,7 +90,7 @@ def process_spec_file(spec_name, name_to_colli: dict, spec_dir: Path, num_bins: 
     return return_dict
 
 
-def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ignore_peak=None, func='cos', selected_evs=None) -> np.ndarray:
+def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ignore_peak=None, func='cos', selected_evs=None, agg=True) -> np.ndarray:
     """cos_dist for binned spectrum
 
     Args:
@@ -106,7 +106,7 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
     ## sampled_evs = np.random.choice(evs, 3, p = ())
     if selected_evs:
         true_spec_dict = {k: v for k, v in true_spec_dict.items() if str(k) in selected_evs}
-    for idx, colli_eng in enumerate(true_spec_dict.keys()): # TODO: sample 
+    for idx, colli_eng in enumerate(true_spec_dict.keys()):
         cand_preds = np.stack([i[colli_eng] for i in cand_preds_dict], axis=0)
         true_spec = true_spec_dict[colli_eng]
 
@@ -185,7 +185,11 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
     # weights = np.ones(dist.shape[0])
     weights = weights / weights.sum()
 
-    return np.sum(dist * weights[:, None], axis=0)  # number of candidates
+    if agg:
+        return np.sum(dist * weights[:, None], axis=0)  # number of candidates
+    else:
+        # return both
+        return dist, np.sum(dist * weights[:, None], axis=0)  # number of candidates
 
 # define cosine/entropy functions
 cos_dist_bin = partial(dist_bin, func='cos')
