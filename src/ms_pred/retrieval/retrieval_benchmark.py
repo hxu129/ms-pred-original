@@ -189,6 +189,7 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
         return np.sum(dist * weights[:, None], axis=0)  # number of candidates
     else:
         # return both
+        dist = dist[weights > 0] # exclude any objectives that have zero-weights based on filter
         return dist, np.sum(dist * weights[:, None], axis=0)  # number of candidates
 
 # define cosine/entropy functions

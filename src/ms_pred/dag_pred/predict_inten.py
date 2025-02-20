@@ -180,35 +180,51 @@ def predict():
             )
 
             outputs = outputs["spec"]
-            for spec, inten_frag_id, output_spec in zip(
-                spec_names, inten_frag_ids, outputs
+            for spec, inten_frag_id, collision_energy, output_spec in zip(
+                spec_names, inten_frag_ids, collision_energies, outputs
             ):
                 output_obj = {
                     "spec_name": spec,
                     "frag_ids": inten_frag_id,
                     "output_spec": output_spec,
                     "smiles": pred_dataset.name_to_smiles[spec],
+                    "collision_energy": collision_energy,
                 }
                 pred_list.append(output_obj)
 
     # Export pred objects
     if binned_out:
-        spec_names_ar = [str(i["spec_name"]) for i in pred_list]
-        smiles_ar = [str(i["smiles"]) for i in pred_list]
-        inchikeys = [common.inchikey_from_smiles(i) for i in smiles_ar]
-        preds = np.vstack([i["output_spec"] for i in pred_list])
-        output = {
-            "preds": preds,
-            "smiles": smiles_ar,
-            "ikeys": inchikeys,
-            "spec_names": spec_names_ar,
-            "num_bins": model.inten_buckets.shape[-1],
-            "upper_limit": 1500,
-            "sparse_out": False,
-        }
-        out_file = Path(kwargs["save_dir"]) / "binned_preds.p"
-        with open(out_file, "wb") as fp:
-            pickle.dump(output, fp)
+        h5 = common.HDF5Dataset(Path(kwargs["save_dir"]) / "binned_preds.hdf5", mode='w')
+        h5.attrs['num_bins'] = model.inten_buckets.shape[-1]
+        h5.attrs['upper_limit'] = 1500
+        h5.attrs['sparse_out'] = False
+        for output_obj in pred_list:
+            spec_name = output_obj["spec_name"]
+            smi = output_obj["smiles"]
+            inchikey = common.inchikey_from_smiles(smi)
+            collision_energy = output_obj["collision_energy"]
+            output_spec = output_obj["output_spec"]
+            h5_name = f'pred_{spec_name}/ikey {inchikey}/collision {collision_energy}'
+            h5.write_data(h5_name + '/spec', output_spec)
+            h5.update_attr(h5_name, {'smiles': smi, 'ikey': inchikey, 'spec_name': spec_name})
+        h5.close()
+
+        # spec_names_ar = [str(i["spec_name"]) for i in pred_list]
+        # smiles_ar = [str(i["smiles"]) for i in pred_list]
+        # inchikeys = [common.inchikey_from_smiles(i) for i in smiles_ar]
+        # preds = np.vstack([i["output_spec"] for i in pred_list])
+        # output = {
+        #     "preds": preds,
+        #     "smiles": smiles_ar,
+        #     "ikeys": inchikeys,
+        #     "spec_names": spec_names_ar,
+        #     "num_bins": model.inten_buckets.shape[-1],
+        #     "upper_limit": 1500,
+        #     "sparse_out": False,
+        # }
+        # out_file = Path(kwargs["save_dir"]) / "binned_preds.p"
+        # with open(out_file, "wb") as fp:
+        #     pickle.dump(output, fp)
     else:
         raise NotImplementedError()
         # Process each spec
