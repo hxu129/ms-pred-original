@@ -218,11 +218,10 @@ class IntenGNN(pl.LightningModule):
         self.ppm_tol = ppm_tol
         self.mass_tol = self.ppm_tol * 1e-6
         self.loss_fn_name = loss_fn
+        self.cos_fn = nn.CosineSimilarity()
         if loss_fn == "cosine":
             self.loss_fn = self.cos_loss
-            self.cos_fn = nn.CosineSimilarity()
             self.output_activations = [nn.Sigmoid()]
-            self.bce_fn = nn.BCELoss()
         elif loss_fn == "entropy":
             self.loss_fn = self.entropy_loss
             self.output_activations = [nn.Sigmoid()]
@@ -474,6 +473,9 @@ class IntenGNN(pl.LightningModule):
             _type_: _description_
         """
         device = num_frags.device
+
+        if not self.include_unshifted_mz:
+            masses = masses[:, :, :1, :].contiguous()  # only keep m/z with adduct shift
 
         # if root fingerprints:
         if self.embed_adduct:
@@ -763,7 +765,7 @@ class IntenGNN(pl.LightningModule):
             split_end = torch.cumsum(batch['mol_num'], dim=0)
             split_start = split_end - batch['mol_num']
             decoy_spec_loss = [decoy_spec_loss[s:e] for s, e in zip(split_start, split_end)]
-            decoy_spec_loss = torch.nn.utils.rnn.pad_sequence(decoy_spec_loss, batch_first=True, padding_value=1) # cos_loss <=1 by definition TODO need to rethink for entropy loss
+            decoy_spec_loss = torch.nn.utils.rnn.pad_sequence(decoy_spec_loss, batch_first=True, padding_value=1) # cos_loss <=1 by definition
             decoy_spec_loss_sorted = torch.sort(decoy_spec_loss, dim=-1).values.detach()
             ranking_dist = torch.abs(decoy_spec_loss[:, :, None] - decoy_spec_loss_sorted[:, None, :])
             top1_prob = pygm.sinkhorn(-ranking_dist, n1=batch["mol_num"], n2=batch["mol_num"], tau=self.sk_tau, backend='pytorch')[:, 0, 0]
@@ -780,12 +782,6 @@ class IntenGNN(pl.LightningModule):
         self.log(
             f"{name}_loss", loss["loss"].item(), batch_size=batch_size, on_epoch=True
         )
-
-        if name == 'test':
-            loss.update({
-                'cos_loss': self.cos_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])['loss'].mean(),
-                'entr_loss': self.entropy_loss(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])['loss'].mean(),
-            })
 
         for k, v in loss.items():
             if k != "loss":
