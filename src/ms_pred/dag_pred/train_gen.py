@@ -200,7 +200,6 @@ def train_model():
         persistent_workers=persistent_workers,
         multiprocessing_context=mp_contex,
     )
-    
 
     # Define model
     model = gen_model.FragGNN(

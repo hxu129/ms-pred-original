@@ -42,14 +42,14 @@ universal_args:
   add-hs: [true]
 
 iterative_args:
-  -  split-name: [split.tsv]
-     save-dir: [split_rnd1]
-     seed: [1]
+  # -  split-name: [split.tsv]
+  #    save-dir: [split_rnd1]
+  #    seed: [1]
 
-  -  split-name: [split.tsv]
-     save-dir: [split_rnd2]
-     seed: [2]
-
+  # -  split-name: [split.tsv]
+  #    save-dir: [split_rnd2]
+  #    seed: [2]
+  #
   -  split-name: [split.tsv]
      save-dir: [split_rnd3]
      seed: [3]

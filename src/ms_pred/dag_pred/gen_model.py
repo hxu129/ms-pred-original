@@ -425,7 +425,7 @@ class FragGNN(pl.LightningModule):
             adducts=batch["adducts"],
             collision_engs=batch["collision_engs"],
             precursor_mzs=batch["precursor_mzs"],
-            instruments=batch["instruments"] if "instrument" in batch else None,
+            instruments=batch["instruments"] if "instruments" in batch else None,
             root_forms=batch["root_form_vecs"],
             frag_forms=batch["frag_form_vecs"],
         )
