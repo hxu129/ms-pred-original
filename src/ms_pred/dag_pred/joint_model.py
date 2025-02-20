@@ -68,6 +68,7 @@ class JointModel(pl.LightningModule):
         threshold: float,
         device: str,
         max_nodes: int,
+        instrument: str = None,
         binned_out: bool = False,
         adduct_shift: bool = False,
         canonical_root_smi: bool = False,
@@ -95,6 +96,7 @@ class JointModel(pl.LightningModule):
             collision_eng = [collision_eng]
             precursor_mz = [precursor_mz]
             adduct = [adduct]
+            instrument = [instrument]
         else:
             batched_input = True
         batch_size = len(root_smi)
@@ -106,6 +108,7 @@ class JointModel(pl.LightningModule):
             collision_eng=collision_eng,
             precursor_mz=precursor_mz,
             adduct=adduct,
+            instrument=instrument,
             threshold=threshold,
             device=device,
             max_nodes=max_nodes,
@@ -153,6 +156,8 @@ class JointModel(pl.LightningModule):
 
         adducts = safe_device(batch["adducts"]).to(device)
         collision_engs = safe_device(batch["collision_engs"]).to(device)
+        if self.inten_model_obj.embed_instrument:
+            instruments = safe_device(batch["instruments"]).to(device)
         precursor_mzs = safe_device(batch["precursor_mzs"]).to(device)
         root_forms = safe_device(batch["root_form_vecs"])
         frag_forms = safe_device(batch["frag_form_vecs"])
@@ -172,6 +177,7 @@ class JointModel(pl.LightningModule):
             binned_out=binned_out,
             adducts=adducts,
             collision_engs=collision_engs,
+            instruments=instruments if self.inten_model_obj.embed_instrument else None,
             precursor_mzs=precursor_mzs,
         )
 
