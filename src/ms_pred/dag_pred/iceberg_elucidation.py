@@ -280,9 +280,11 @@ def load_real_spec(
 
     # round collision energy to integer
     real_spec = {float(common.get_collision_energy(k)): v for k, v in real_spec.items()}
+    print(real_spec.keys())
     if nce:
         real_spec = {common.nce_to_ev(k, precursor_mass): v for k, v in real_spec.items()}
     real_spec = {f'{float(k):.0f}': v for k, v in real_spec.items()}
+    
     return real_spec
 
 
@@ -368,6 +370,7 @@ def elucidation_over_candidates(
     num_bins:int=15000,
     ignore_precursor:bool=True,
     dist_func:str='entropy',
+    nist_path:str='data/spec_datasets/nist20/spec_files.hdf5',
     **kwargs,
 ):
     """
@@ -398,7 +401,7 @@ def elucidation_over_candidates(
     """
     assert isinstance(precursor_mass, float)
 
-    real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm)
+    real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm, nist_path)
     smiles, pred_specs, pred_frags = load_pred_spec(load_dir, step_collision_energy)
 
     # transform spec to binned spectrum
@@ -475,6 +478,9 @@ def explain_peaks(
     ppm:int=20,
     save_path:str=None,
     axes:list=None,
+    nist_path:str='data/spec_datasets/nist20/spec_files.hdf5',
+    display_expmass=True,
+    
     **kwargs,
 ):
     """
@@ -496,8 +502,7 @@ def explain_peaks(
     """
     from matplotlib.offsetbox import (OffsetImage, AnnotationBbox)
     import ms_pred.magma.fragmentation as fragmentation
-
-    real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm)
+    real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm, nist_path)
     if 'step_collision_energy' in kwargs:
         merge_spec = kwargs['step_collision_energy']
     if merge_spec:
@@ -531,6 +536,7 @@ def explain_peaks(
     engine = fragmentation.FragmentEngine(smi, mol_str_type='smiles')
 
     all_figs = []
+    print(real_spec.keys()), print(pred_specs[idx].keys())
     for _, ce, ax in sorted(zip([float(ce) for ce in real_spec.keys()], real_spec.keys(), axes)):
         pred_spec = pred_specs[idx][ce]
         pred_frag = pred_frags[idx][ce]
@@ -540,6 +546,19 @@ def explain_peaks(
 
         counter = 0
         pred_spec[:, 1] = pred_spec[:, 1] / np.max(pred_spec[:, 1])
+        if display_expmass:
+            mz_to_plot = dict()
+            for mz, inten in real_spec[ce]:
+                if mz.round(2) in mz_to_plot:
+                    if mz_to_plot[mz.round(2)][1] < inten:
+                        mz_to_plot[mz.round(2)] = mz, inten
+                else:
+                    mz_to_plot[mz.round(2)] = mz, inten
+            for _, (mz, inten) in mz_to_plot.items():
+                plt.text(mz, inten + 0.06, f'{mz:.4f}', fontsize=4, alpha=0.7, horizontalalignment='center')
+
+
+        
         for spec, frag in zip(pred_spec, pred_frag):
             mz, inten = spec
             draw_dict = engine.get_draw_dict(frag)
@@ -585,6 +604,7 @@ def modi_finder(
     ppm:int=20,
     save_path: str = None,
     axes: list = None,
+    nist_path:str='data/spec_datasets/nist20/spec_files.hdf5',
 ):
     """
     ModiFinder find modification sites between two chemical compounds, whereby their mass spec are obtained and the
@@ -628,8 +648,8 @@ def modi_finder(
         raise ValueError("shape mismatch")
 
     # load experiment spectra
-    real_spec1 = load_real_spec(real_spec1, real_spec_type1, precursor_mass1, nce1, ppm)
-    real_spec2 = load_real_spec(real_spec2, real_spec_type2, precursor_mass2, nce2, ppm)
+    real_spec1 = load_real_spec(real_spec1, real_spec_type1, precursor_mass1, nce1, ppm, nist_path)
+    real_spec2 = load_real_spec(real_spec2, real_spec_type2, precursor_mass2, nce2, ppm, nist_path)
 
     # load predicted spectra and fragments
     smiles, pred_specs, pred_frags = load_pred_spec(load_dir, step_collision_energy)
