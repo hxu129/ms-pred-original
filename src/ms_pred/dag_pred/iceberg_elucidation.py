@@ -475,6 +475,7 @@ def explain_peaks(
     ppm:int=20,
     save_path:str=None,
     axes:list=None,
+    display_expmass=True,
     **kwargs,
 ):
     """
@@ -540,6 +541,17 @@ def explain_peaks(
 
         counter = 0
         pred_spec[:, 1] = pred_spec[:, 1] / np.max(pred_spec[:, 1])
+        if display_expmass:
+            mz_to_plot = dict()
+            for mz, inten in real_spec[ce]:
+                if mz.round(2) in mz_to_plot:
+                    if mz_to_plot[mz.round(2)][1] < inten:
+                        mz_to_plot[mz.round(2)] = mz, inten
+                else:
+                    mz_to_plot[mz.round(2)] = mz, inten
+            for _, (mz, inten) in mz_to_plot.items():
+                plt.text(mz, inten + 0.06, f'{mz:.4f}', fontsize=4, alpha=0.7, horizontalalignment='center')
+
         for spec, frag in zip(pred_spec, pred_frag):
             mz, inten = spec
             draw_dict = engine.get_draw_dict(frag)
