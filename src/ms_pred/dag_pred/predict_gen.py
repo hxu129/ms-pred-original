@@ -99,6 +99,8 @@ def predict():
 
         df = df[df["spec"].isin(names)]
 
+        df = df[df["instrument"].isin(["Orbitrap", "QTOF"])] # drop any nans
+
     # Create model and load
     best_checkpoint = kwargs["checkpoint_pth"]
 
@@ -106,6 +108,7 @@ def predict():
     gpu = kwargs["gpu"]
     model = gen_model.FragGNN.load_from_checkpoint(best_checkpoint, map_location='cpu')
     avail_gpu_num = torch.cuda.device_count()
+
 
     logging.info(f"Loaded model with from {best_checkpoint}")
     if kwargs["num_decoys"] == 0:
@@ -125,6 +128,7 @@ def predict():
             name = entry["spec"]
             adduct = entry["ionization"]
             precursor_mz = entry["precursor"]
+            instrument = entry["instrument"]
             collision_energies = [i for i in ast.literal_eval(entry["collision_energies"])]
             smi = common.rm_stereo(smi)
             mol = common.smi_inchi_round_mol(smi)
@@ -173,7 +177,7 @@ def predict():
                         colli_eng_val = common.collision_energy_to_float(colli_eng)  # str to float
                         out_h5_key = f"pred_{name}/collision {colli_eng}/decoy {i}.json"
                         tup_to_process.append((
-                            decoy_smi, name + f'_decoy {i}', colli_eng_val, adduct, precursor_mz,
+                            decoy_smi, name + f'_decoy {i}', colli_eng_val, adduct, instrument, precursor_mz,
                             out_h5_key,
                             int(common.str_to_hash(name), base=16) % len(all_save_path)  # output hdf5 index
                         ))
@@ -182,7 +186,7 @@ def predict():
                 for colli_eng in collision_energies:
                     colli_eng_val = common.collision_energy_to_float(colli_eng)  # str to float
                     tup_to_process.append((
-                        smi, name, colli_eng_val, adduct, precursor_mz,
+                        smi, name, colli_eng_val, adduct, instrument, precursor_mz,
                         f"pred_{name}_collision {colli_eng}.json",
                         0  # only one hdf5 output
                     ))
@@ -225,12 +229,13 @@ def predict():
                 device = "cpu"
             model.to(device)
 
-            smi, name, colli_eng_val, adduct, precursor_mz, out_name, out_file_idx = list(zip(*batch))
+            smi, name, colli_eng_val, adduct, instrument, precursor_mz, out_name, out_file_idx = list(zip(*batch))
             pred = model.predict_mol(
                 smi,
                 precursor_mz=precursor_mz,
                 collision_eng=colli_eng_val,
                 adduct=adduct,
+                instrument=instrument,
                 threshold=kwargs["threshold"],
                 device=device,
                 max_nodes=kwargs["max_nodes"],
@@ -238,14 +243,15 @@ def predict():
                 canonical_root_smi=True,  # smi is canonical
             )
             return_list = []
-            for _smi, _name, _pred, _colli_eng_val, _adduct, _out_name, _out_file_idx in \
-                    zip(smi, name, pred, colli_eng_val, adduct, out_name, out_file_idx):
+            for _smi, _name, _pred, _colli_eng_val, _adduct, _instrument, _out_name, _out_file_idx in \
+                    zip(smi, name, pred, colli_eng_val, adduct, instrument, out_name, out_file_idx):
                 output = {
                     "root_canonical_smiles": _smi,
                     "name": _name,
                     "frags": _pred,
                     "collision_energy": _colli_eng_val,
                     "adduct": _adduct,
+                    "instrument": _instrument,
                 }
                 return_list.append((_out_name, json.dumps(output, indent=2), _out_file_idx))
             return return_list
