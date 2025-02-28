@@ -88,13 +88,27 @@ def main():
 
     num_workers = args.num_workers
     pred_dag_names, true_dag_names, out_dag_names = [], [], []
+    
+    pred_dag_h5 = common.HDF5Dataset(pred_dag_folder)
+    pred_dag_name_set = set(pred_dag_h5.get_all_names())
+    pred_dag_h5.close()
+
+
     true_dag_h5 = common.HDF5Dataset(true_dag_folder)
-    for true_dag_n in tqdm(true_dag_h5.get_all_names()):
-        spec_id = 'pred_' + true_dag_n
+    for true_dag_n in tqdm(list(true_dag_h5.get_all_names())):
+        # as part of MSG processing:
+        spec_id =  'pred_' + true_dag_n.split(' eV')[0] + '.json'
+        if spec_id not in pred_dag_name_set:
+            continue
+        #spec_id = 'pred_' + true_dag_n 
         pred_dag_names.append(spec_id)
         true_dag_names.append(true_dag_n)
         out_dag_names.append(true_dag_n)
     true_dag_h5.close()
+
+    print(pred_dag_folder)
+
+    
 
     arg_dicts = [
         {
