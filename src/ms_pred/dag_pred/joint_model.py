@@ -116,13 +116,14 @@ class JointModel(pl.LightningModule):
         )
         processed_trees = []
         out_trees = []
-        for r_smi, colli_eng, adct, p_mz, tree in zip(root_smi, collision_eng, adduct, precursor_mz, frag_tree):
+        for r_smi, colli_eng, adct, instrument, p_mz, tree in zip(root_smi, collision_eng, adduct, instrument, precursor_mz, frag_tree):
             tree = {
                 "root_canonical_smiles": r_smi,
                 "name": "",
                 "collision_energy": colli_eng,
                 "frags": tree,
-                "adduct": adct
+                "adduct": adct, 
+                "instrument": instrument,
             }
 
             processed_tree = self.inten_tp.process_tree_inten_pred(tree)
@@ -132,6 +133,7 @@ class JointModel(pl.LightningModule):
             processed_tree = processed_tree["dgl_tree"]
 
             processed_tree["adduct"] = common.ion2onehot_pos[adct]
+            processed_tree['instrument'] = common.instrument2onehot_pos[instrument]
             processed_tree["name"] = ""
             processed_tree["precursor"] = p_mz
             processed_trees.append(processed_tree)

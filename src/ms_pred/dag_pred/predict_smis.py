@@ -148,6 +148,7 @@ def predict():
             smi = entry["smiles"]
             adduct = entry["ionization"]
             precursor_mz = entry["precursor"]
+            instrument = entry["instrument"]
             name = entry["spec"]
             inchikey = common.inchikey_from_smiles(smi)
             collision_energies = [i for i in ast.literal_eval(entry["collision_energies"])]
@@ -157,7 +158,7 @@ def predict():
                 colli_eng_val = common.collision_energy_to_float(colli_eng)  # str to float
                 if math.isnan(colli_eng_val):  # skip collision_energy == nan (no collision energy recorded)
                     continue
-                tup_to_process.append((smi, name, colli_eng_val, adduct, precursor_mz,
+                tup_to_process.append((smi, name, colli_eng_val, adduct, instrument, precursor_mz,
                                        f"pred_{name}/ikey {inchikey}/collision {colli_eng}"))
             return tup_to_process
 
@@ -182,6 +183,8 @@ def predict():
             predict_entries[i: i + batch_size] for i in range(0, len(predict_entries), batch_size)
         ]
 
+        print("# gpus", avail_gpu_num)
+
         def producer_func(batch):
             torch.set_num_threads(1)
             if gpu and avail_gpu_num >= 0:
@@ -196,12 +199,13 @@ def predict():
             model.to(device)
 
             # for batch in batched_entries:
-            smis, spec_names, colli_eng_vals, adducts, precursor_mzs, h5_names = list(zip(*batch))
+            smis, spec_names, colli_eng_vals, adducts, instruments, precursor_mzs, h5_names = list(zip(*batch))
             full_outputs = model.predict_mol(
                 smis,
                 precursor_mz=precursor_mzs,
                 collision_eng=colli_eng_vals,
                 adduct=adducts,
+                instrument=instruments,
                 threshold=kwargs["threshold"],
                 device=device,
                 max_nodes=kwargs["max_nodes"],
@@ -255,12 +259,14 @@ def predict():
                     h5.update_attr(h5_name, {'smiles': smi, 'ikey': inchikey, 'spec_name': spec_name})
             h5.close()
 
+            return None
+
         if kwargs["num_workers"] == 0:
             output_entries = [producer_func(batch) for batch in tqdm(all_batched_entries)]
             write_h5_func(output_entries)
         else:
             common.chunked_parallel(all_batched_entries, producer_func, output_func=write_h5_func,
-                                    chunks=1000, max_cpu=kwargs["num_workers"])
+                                    chunks=10000, max_cpu=kwargs["num_workers"])
 
 
 if __name__ == "__main__":
