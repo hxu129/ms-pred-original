@@ -35,6 +35,7 @@ class IntenGNN(pl.LightningModule):
         max_broken: int = run_magma.FRAGMENT_ENGINE_PARAMS["max_broken_bonds"],
         frag_set_layers: int = 0,
         loss_fn: str = "cosine",
+        track_cosine: bool = False,
         root_encode: str = "gnn",
         inject_early: bool = False,
         warmup: int = 1000,
@@ -218,6 +219,7 @@ class IntenGNN(pl.LightningModule):
         self.ppm_tol = ppm_tol
         self.mass_tol = self.ppm_tol * 1e-6
         self.loss_fn_name = loss_fn
+        self.track_cosine = track_cosine
         self.cos_fn = nn.CosineSimilarity()
         if loss_fn == "cosine":
             self.loss_fn = self.cos_loss
@@ -225,6 +227,8 @@ class IntenGNN(pl.LightningModule):
         elif loss_fn == "entropy":
             self.loss_fn = self.entropy_loss
             self.output_activations = [nn.Sigmoid()]
+            if self.track_cosine:
+                self._cosine_fn = self.cos_loss
         elif loss_fn == "weighted_entropy":
             self.loss_fn = functools.partial(self.entropy_loss, weighted=True)
             self.output_activations = [nn.Sigmoid()]
@@ -745,8 +749,13 @@ class IntenGNN(pl.LightningModule):
 
         if name == 'train':
             loss_fn = self.loss_fn
+            if self.track_cosine:
+                cosine_fn = self._cosine_fn
         else:
-            loss_fn = functools.partial(self.loss_fn, use_hun=True)  # use hungarian in val and test
+            loss_fn = functools.partial(self.loss_fn, use_hun=False)  # use hungarian in val and test
+            # TODO: is the hungarian matching correct?
+            if self.track_cosine:
+                cosine_fn = functools.partial(self._cosine_fn, use_hun=False) # use hungarian in val and test
 
         if 'is_decoy' in batch and 'mol_num' in batch:  # data with decoys
             true_data_inds = batch["is_decoy"] == 0
@@ -776,12 +785,21 @@ class IntenGNN(pl.LightningModule):
                 "contr_loss": contr_loss,
                 "loss": spec_loss + contr_loss * self.contr_weight,
             }
+            # TODO: track cosine loss if desired
         else:
             loss = loss_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])
+            if self.track_cosine:
+                
+                cosine_loss_val = cosine_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])['loss']
+
         loss = {k: v.mean() for k, v in loss.items()}
         self.log(
             f"{name}_loss", loss["loss"].item(), batch_size=batch_size, on_epoch=True
         )
+        if self.track_cosine:
+            self.log(
+                f"{name}_cosine", cosine_loss_val.mean().item(), batch_size=batch_size, on_epoch=True
+            )
 
         for k, v in loss.items():
             if k != "loss":

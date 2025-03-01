@@ -73,6 +73,7 @@ def add_frag_train_args(parser):
         action="store",
         choices=["cosine", "entropy", "weighted_entropy"],
     )
+    parser.add_argument("--track-cosine", default=False, action="store_true") # Generally, use if not using cosine as main loss. 
     parser.add_argument(
         "--root-encode",
         default="gnn",
@@ -233,6 +234,7 @@ def train_model():
         pe_embed_k=kwargs["pe_embed_k"],
         pool_op=kwargs["pool_op"],
         loss_fn=kwargs["loss_fn"],
+        track_cosine=kwargs["loss_fn"],
         root_encode=kwargs["root_encode"],
         inject_early=kwargs["inject_early"],
         embed_adduct=kwargs["embed_adduct"],
@@ -254,7 +256,7 @@ def train_model():
     if kwargs["debug"]:
         kwargs["max_epochs"] = 2
 
-    if kwargs["debug_overfit"]:
+    if kwargs["debug_overfit"]: # this debugs _by_ overfitting, not debugging overfitting itself
         kwargs["min_epochs"] = 1000
         kwargs["max_epochs"] = kwargs["min_epochs"]
         kwargs["no_monitor"] = True
