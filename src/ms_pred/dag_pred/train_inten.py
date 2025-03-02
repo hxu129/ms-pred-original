@@ -234,7 +234,7 @@ def train_model():
         pe_embed_k=kwargs["pe_embed_k"],
         pool_op=kwargs["pool_op"],
         loss_fn=kwargs["loss_fn"],
-        track_cosine=kwargs["loss_fn"],
+        track_cosine=kwargs["track_cosine"],
         root_encode=kwargs["root_encode"],
         inject_early=kwargs["inject_early"],
         embed_adduct=kwargs["embed_adduct"],
