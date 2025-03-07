@@ -498,7 +498,7 @@ def form_from_inchi(inchi: str) -> str:
     return uncharged_formula(inchi, mol_type="inchi")
 
 
-def rm_stereo(mol: str, mol_type='smi') -> str:
+def _mol_from_types(mol, mol_type):
     if mol_type == 'smi':
         mol = Chem.MolFromSmiles(mol)
     elif mol_type == 'inchi':
@@ -507,6 +507,10 @@ def rm_stereo(mol: str, mol_type='smi') -> str:
         mol = mol
     else:
         raise ValueError(f"Unknown mol_type={mol_type}")
+    return mol
+
+def rm_stereo(mol: str, mol_type='smi') -> str:
+    mol = _mol_from_types(mol, mol_type)
 
     if mol is None:
         return
@@ -650,6 +654,28 @@ def get_collision_energy(filename):
     else:
         colli_eng = 'nan'
     return colli_eng
+
+
+def is_charged(mol, mol_type='smi') -> bool:
+    """check if the entire molecule has imbalanced charge"""
+    mol = _mol_from_types(mol, mol_type)
+    return sum(atom.GetFormalCharge() for atom in mol.GetAtoms()) != 0
+
+
+def has_separate_components(mol, mol_type='smi') -> bool:
+    """is salt"""
+    mol = _mol_from_types(mol, mol_type)
+    return len(Chem.GetMolFrags(mol)) > 1
+
+
+def has_isotopes(mol, mol_type='smi') -> bool:
+    mol = _mol_from_types(mol, mol_type)
+    return any(atom.GetIsotope() != 0 for atom in mol.GetAtoms())
+
+
+def has_unsupported_elems(mol, mol_type='smi') -> bool:
+    mol = _mol_from_types(mol, mol_type)
+    return not all(atom.GetSymbol() in VALID_ELEMENTS for atom in mol.GetAtoms())
 
 
 def collision_energy_to_float(colli_eng):

@@ -22,7 +22,7 @@ method_colors = {
     "MassFormer": "#7C9D97",
     "Graff-MS": "#A7B7C3",
     "FraGNNet": "#7B94CC",
-    "ICEBERG (GLC'24)": "#E9B382",
+    "ICEBERG (Goldman'24)": "#E9B382",
     "ICEBERG (Ours)": "#FFD593",
 }
 
@@ -35,7 +35,7 @@ method_markers = {
     "MassFormer": "<",
     "Graff-MS": "v",
     "FraGNNet": ">",
-    "ICEBERG (GLC'24)": "x",
+    "ICEBERG (Goldman'24)": "x",
     "ICEBERG (Ours)": "o",
 }
 
