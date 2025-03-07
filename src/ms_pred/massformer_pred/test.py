@@ -79,7 +79,7 @@ def get_args():
     return parser.parse_args()
 
 
-def train_model():
+def test_model():
     args = get_args()
     kwargs = args.__dict__
     upper_limit = 1500
@@ -89,12 +89,6 @@ def train_model():
         save_dir, log_name="massformer_train.log", debug=kwargs["debug"]
     )
     pl.seed_everything(kwargs.get("seed"))
-
-    # Dump args
-    yaml_args = yaml.dump(kwargs)
-    logging.info(f"\n{yaml_args}")
-    with open(Path(save_dir) / "args.yaml", "w") as fp:
-        fp.write(yaml_args)
 
     # Get dataset
     # Load smiles dataset and split into 3 subsets
@@ -111,28 +105,10 @@ def train_model():
     spec_names = df["spec"].values
 
     train_inds, val_inds, test_inds = common.get_splits(spec_names, split_file)
-    train_df = df.iloc[train_inds]
-    val_df = df.iloc[val_inds]
     test_df = df.iloc[test_inds]
 
     num_bins = kwargs.get("num_bins")
     num_workers = kwargs.get("num_workers", 0)
-    train_dataset = massformer_data.BinnedDataset(
-        train_df,
-        data_dir=data_dir,
-        num_bins=num_bins,
-        num_workers=num_workers,
-        upper_limit=upper_limit,
-        form_dir_name=kwargs["form_dir_name"],
-    )
-    val_dataset = massformer_data.BinnedDataset(
-        val_df,
-        data_dir=data_dir,
-        num_bins=num_bins,
-        num_workers=num_workers,
-        upper_limit=upper_limit,
-        form_dir_name=kwargs["form_dir_name"],
-    )
     test_dataset = massformer_data.BinnedDataset(
         test_df,
         data_dir=data_dir,
@@ -143,51 +119,13 @@ def train_model():
     )
 
     # Define dataloaders
-    collate_fn = train_dataset.get_collate_fn()
-    train_loader = DataLoader(
-        train_dataset,
-        num_workers=kwargs["num_workers"],
-        collate_fn=collate_fn,
-        shuffle=True,
-        batch_size=kwargs["batch_size"],
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        num_workers=kwargs["num_workers"],
-        collate_fn=collate_fn,
-        shuffle=False,
-        batch_size=kwargs["batch_size"],
-    )
+    collate_fn = test_dataset.get_collate_fn()
     test_loader = DataLoader(
         test_dataset,
         num_workers=kwargs["num_workers"],
         collate_fn=collate_fn,
         shuffle=False,
         batch_size=kwargs["batch_size"],
-    )
-
-    # Define model
-    # test_batch = next(iter(train_loader))
-    model = massformer_model.MassFormer(
-        mf_num_ff_num_layers=kwargs["mf_num_ff_num_layers"],
-        mf_ff_h_dim=kwargs["mf_ff_h_dim"],
-        mf_ff_skip=kwargs["mf_ff_skip"],
-        mf_layer_type=kwargs["mf_layer_type"],
-        mf_dropout=kwargs["mf_dropout"],
-        use_reverse=kwargs["use_reverse"],
-        embed_adduct=kwargs["embed_adduct"],
-        embed_collision_energy=kwargs["embed_collision_energy"],
-        gf_model_name=kwargs["gf_model_name"],
-        gf_pretrain_name=kwargs["gf_pretrain_name"],
-        gf_fix_num_pt_layers=kwargs["gf_fix_num_pt_layers"],
-        gf_reinit_num_pt_layers=kwargs["gf_reinit_num_pt_layers"],
-        gf_reinit_layernorm=kwargs["gf_reinit_layernorm"],
-        learning_rate=kwargs["learning_rate"],
-        lr_decay_rate=kwargs["lr_decay_rate"],
-        output_dim=num_bins,
-        upper_limit=upper_limit,
-        weight_decay=kwargs["weight_decay"],
-        loss_fn=kwargs["loss_fn"],
     )
 
     # outputs = model(test_batch['fps'])
@@ -227,28 +165,20 @@ def train_model():
         gradient_clip_algorithm="value",
     )
 
-    if kwargs["debug_overfit"]:
-        trainer.fit(model, train_loader)
-    else:
-        trainer.fit(model, train_loader, val_loader)
-
-    checkpoint_callback = trainer.checkpoint_callback
-    best_checkpoint = checkpoint_callback.best_model_path
-    best_checkpoint_score = checkpoint_callback.best_model_score.item()
-
     # Load from checkpoint
+    best_checkpoint = Path(save_dir) / 'version_0/best.ckpt'
     model = massformer_model.MassFormer.load_from_checkpoint(best_checkpoint)
     logging.info(
-        f"Loaded model with from {best_checkpoint} with val loss of {best_checkpoint_score}"
+        f"Loaded model with from {best_checkpoint}"
     )
     model.eval()
-    trainer.test(dataloaders=test_loader)
+    trainer.test(model=model, dataloaders=test_loader)
 
 
 if __name__ == "__main__":
     import time
 
     start_time = time.time()
-    train_model()
+    test_model()
     end_time = time.time()
     logging.info(f"Program finished in: {end_time - start_time} seconds")

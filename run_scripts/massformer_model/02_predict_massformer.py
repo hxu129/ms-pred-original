@@ -41,12 +41,12 @@ for test_entry in test_entries:
     print(cmd + "\n")
     subprocess.run(cmd, shell=True)
 
-    out_binned = save_dir / "binned_preds.p"
+    out_binned = save_dir / "binned_preds.hdf5"
     eval_cmd = f"""python analysis/spec_pred_eval.py \\
     --binned-pred-file {out_binned} \\
     --max-peaks 100 \\
     --min-inten 0 \\
-    --formula-dir-name no_subform \\
+    --formula-dir-name no_subform.hdf5 \\
     --dataset {dataset_name}  \\
     """
     print(eval_cmd)

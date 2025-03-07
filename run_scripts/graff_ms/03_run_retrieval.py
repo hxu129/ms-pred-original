@@ -3,7 +3,7 @@ import subprocess
 import json
 
 pred_file = "src/ms_pred/graff_ms/predict.py"
-retrieve_file = "src/ms_pred/retrieval/retrieval_binned.py"
+retrieve_file = "src/ms_pred/retrieval/retrieval_benchmark.py"
 subform_name = "no_subform"
 devices = ",".join(["2"])
 dist = "cos"
@@ -109,9 +109,10 @@ for test_entry in test_entries:
     # Run retrieval
     cmd = f"""python {retrieve_file} \\
     --dataset {dataset} \\
-    --formula-dir-name {subform_name} \\
-    --binned-pred-file {save_dir / 'binned_preds.p'} \\
+    --formula-dir-name {subform_name}.hdf5 \\
+    --pred-file {save_dir / 'binned_preds.hdf5'} \\
     --dist-fn cos \\
+    --binned-pred \\
         """
 
     print(cmd + "\n")
