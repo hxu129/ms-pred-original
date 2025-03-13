@@ -1,0 +1,22 @@
+name: ms-gen_cuda-12
+channels:
+- pytorch
+- dglteam
+- conda-forge
+- pyg
+- bioconda
+dependencies:
+- python=3.9.*
+- cython
+- ray-tune
+- matplotlib=3.4.*
+- rdkit=2021.03.*
+- conda-forge::python-graphviz
+- conda-forge::pygraphviz
+- pip=21.2.*
+- ipykernel=6.0.*
+- einops
+- nb_conda_kernels=2.3.*
+- seaborn=0.11.*
+- MKL=2024.0.0
+ 
