@@ -99,7 +99,10 @@ def predict():
     df = pd.read_csv(labels, sep="\t")
 
     if kwargs["debug"]:
-        df = df[:10]
+        #df = df[:10]
+        df = df[10000:20000]
+        print(df.spec.value_counts())
+        # print(df.spec.unique()) # should be 1 if there are 256 entries / decoys per actual test entry.. 
 
     if kwargs["subset_datasets"] != "none":
         splits = pd.read_csv(data_dir / "splits" / kwargs["split_name"], sep="\t")
@@ -163,7 +166,6 @@ def predict():
             return tup_to_process
 
         all_rows = [j for _, j in df.iterrows()]
-
         logging.info('Preparing entries')
         if kwargs["num_workers"] == 0:
             predict_entries = [prepare_entry(i) for i in tqdm(all_rows)]
@@ -171,7 +173,7 @@ def predict():
             predict_entries = common.chunked_parallel(
                 all_rows,
                 prepare_entry,
-                chunks=1000,
+                chunks=10000,
                 max_cpu=kwargs["num_workers"],
             )
         predict_entries = [i for j in predict_entries for i in j]  # unroll
@@ -211,6 +213,7 @@ def predict():
                 max_nodes=kwargs["max_nodes"],
                 binned_out=binned_out,
                 adduct_shift=kwargs["adduct_shift"],
+                name=h5_names,
             )
             return_list = []
             if binned_out:
@@ -246,17 +249,27 @@ def predict():
             out_name = "preds.hdf5"
 
         def write_h5_func(out_entries):
-            h5 = common.HDF5Dataset(save_dir / out_name, mode='w')
+            # h5 = common.HDF5Dataset(save_dir / out_name, mode='w')
+            try:
+                h5 = common.HDF5Dataset(save_dir / out_name, mode='w')
+            except Exception as e: # It should just rewrite, though
+                logging.error(f"File may already exist: {e}")
+                h5 = common.HDF5Dataset(save_dir / f"binned_preds1.hdf5", mode='w')
+            
             h5.attrs['num_bins'] = 15000
             h5.attrs['upper_limit'] = 1500
             h5.attrs['sparse_out'] = kwargs["sparse_out"]
             for out_batch in out_entries:
                 for out_item in out_batch:
                     h5_name, spec_name, smi, inchikey, output_spec, pred_frag = out_item
-                    h5.write_data(h5_name + '/spec', output_spec)
-                    if pred_frag is not None:
-                        h5.write_str(h5_name + '/frag', json.dumps(pred_frag.tolist()))  # save as string avoids overflow
-                    h5.update_attr(h5_name, {'smiles': smi, 'ikey': inchikey, 'spec_name': spec_name})
+                    try:
+                        h5.write_data(h5_name + '/spec', output_spec)
+                        if pred_frag is not None:
+                            h5.write_str(h5_name + '/frag', json.dumps(pred_frag.tolist()))  # save as string avoids overflow
+                        h5.update_attr(h5_name, {'smiles': smi, 'ikey': inchikey, 'spec_name': spec_name})
+                    except Exception as e:
+                        print("h5_name", h5_name)
+
             h5.close()
 
             return None
@@ -266,7 +279,7 @@ def predict():
             write_h5_func(output_entries)
         else:
             common.chunked_parallel(all_batched_entries, producer_func, output_func=write_h5_func,
-                                    chunks=10000, max_cpu=kwargs["num_workers"])
+                                    chunks=100000, max_cpu=kwargs["num_workers"])
 
 
 if __name__ == "__main__":

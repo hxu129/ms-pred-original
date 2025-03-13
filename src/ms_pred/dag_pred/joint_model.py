@@ -72,6 +72,7 @@ class JointModel(pl.LightningModule):
         binned_out: bool = False,
         adduct_shift: bool = False,
         canonical_root_smi: bool = False,
+        name: str = None,
     ) -> dict:
         """predict_mol.
 
@@ -101,7 +102,20 @@ class JointModel(pl.LightningModule):
             batched_input = True
         batch_size = len(root_smi)
         if not canonical_root_smi:
+            # first remove stereochemistry, then roundtrip
+            root_smi = [common.rm_stereo(smi) for smi in root_smi]
             root_smi = [common.smiles_from_inchi(common.inchi_from_smiles(_)) for _ in root_smi] # canonical smiles
+            # use to filter
+            valid_mask = [r_smi != None for r_smi in root_smi]
+            # use np.arrays to reprocess:
+            if sum(valid_mask) < batch_size:
+                print("['joint_model.py']: Some SMILES could not be canonicalized via inchi: ", [(smi[i], name[i]) for i in range(batch_size) if not valid_mask[i]])
+                print("['joint_model.py']:", )
+                root_smi = tuple(np.array(root_smi)[valid_mask].tolist())
+                collision_eng = tuple(np.array(collision_eng)[valid_mask].tolist())
+                precursor_mz = tuple(np.array(precursor_mz)[valid_mask].tolist())
+                adduct = tuple(np.array(adduct)[valid_mask].tolist())
+                instrument = tuple(np.array(instrument)[valid_mask].tolist())
 
         frag_tree = self.gen_model_obj.predict_mol(
             root_smi=root_smi,
@@ -194,6 +208,17 @@ class JointModel(pl.LightningModule):
                 out["frag"].append([out_frags[id]["frag"] for id in inten_frag_id])
 
         if batched_input:
-            return out
+            # need to return to original order, using valid_mask
+            if not canonical_root_smi and sum(valid_mask) < batch_size:
+                rebatched_out = dict()
+                rebatched_out["spec"] = []
+                for elem in valid_mask:
+                    if elem:
+                        rebatched_out['spec'].append(out['spec'].pop(0))
+                    else:
+                        rebatched_out['spec'].append(np.zeros((15000,)))
+                return rebatched_out
+            else:
+                return out
         else:
             return {k: v[0] for k, v in out.items()}
