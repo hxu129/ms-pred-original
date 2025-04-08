@@ -557,8 +557,6 @@ def explain_peaks(
             for _, (mz, inten) in mz_to_plot.items():
                 plt.text(mz, inten + 0.06, f'{mz:.4f}', fontsize=4, alpha=0.7, horizontalalignment='center')
 
-
-        
         for spec, frag in zip(pred_spec, pred_frag):
             mz, inten = spec
             draw_dict = engine.get_draw_dict(frag)
