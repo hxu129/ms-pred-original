@@ -269,6 +269,8 @@ class TreeProcessor:
             out_dict = self._convert_to_dgl(tree, include_targets, last_row)
             if "collision_energy" in tree:
                 out_dict["collision_energy"] = tree["collision_energy"]
+            if "instrument" in tree:
+                out_dict["instrument"] = tree["instrument"]
         else:
             out_dict = tree
 
@@ -714,7 +716,6 @@ class IntenDataset(DAGDataset):
         if supply_adduct:
             adducts = [j["adduct"] for j in input_list]
             adducts = torch.FloatTensor(adducts)
-        
         supply_instrument = "instrument" in input_list[0]
         if supply_instrument:
             instruments = [j["instrument"] for j in input_list]
@@ -867,7 +868,7 @@ class IntenContrDataset(DAGDataset):
                     trees = self.tree_processor.process_tree_inten_pred(gen_pred)
                     decoy_entry = trees['dgl_tree']
                     decoy_entry.update(
-                        {"name": gen_pred['name'], "adduct": adduct, "precursor": precursor, "collision_energy": colli_eng,
+                        {"name": gen_pred['name'], "adduct": adduct, "instrument": instrument, "precursor": precursor, "collision_energy": colli_eng,
                          "smiles": smi, "decoy": 1})
                     outlist.append(decoy_entry)
 

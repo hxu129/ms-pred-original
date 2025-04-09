@@ -19,6 +19,7 @@ universal_args:
 
   dataset-name: [msg]
   split-name: [split.tsv]
+  dataset-labels: [labels_withev_validinst.tsv]
 
   learning-rate: [0.000736]
   lr-decay-rate: [0.825]
@@ -26,6 +27,7 @@ universal_args:
   dropout: [0.1]
   mpnn-type: [GGNN]
   pe-embed-k: [0]
+  min-epochs: [50]
   pool-op: [avg]
   hidden-size: [256]
   weight-decay: [1e-7]
@@ -34,6 +36,7 @@ universal_args:
   mlp-layers: [1]
   gnn-layers: [4]
   loss-fn: [entropy]
+  track-cosine: [true]
   root-encode: [gnn]
   inject-early: [false]
 
@@ -41,6 +44,7 @@ universal_args:
   binned-targs: [true]
   embed-adduct: [true]
   embed-collision: [true]
+  embed-instrument: [true]
   embed-elem-group: [true]
   grad-accumulate: [1]
   encode-forms: [true]
@@ -51,16 +55,16 @@ universal_args:
 
 iterative_args:
   -  split-name: [split.tsv]
-     save-dir: [split_1_rnd1]
+     save-dir: [split_1_rnd1_entropy]
      magma-dag-folder: [results/dag_msg_allev/split_rnd1/preds_train_100_inten.hdf5]
      seed: [1]
 
   -  split-name: [split.tsv]
-     save-dir: [split_1_rnd2]
+     save-dir: [split_1_rnd2_entropy]
      magma-dag-folder: [results/dag_msg_allev/split_rnd2/preds_train_100_inten.hdf5]
      seed: [2]
 
   -  split-name: [split.tsv]
-     save-dir: [split_1_rnd3]
+     save-dir: [split_1_rnd3_entropy]
      magma-dag-folder: [results/dag_msg_allev/split_rnd3/preds_train_100_inten.hdf5]
      seed: [3]

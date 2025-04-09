@@ -86,6 +86,7 @@ def iceberg_prediction(
     collision_energies:List[int],
     nce:bool=False,
     adduct:str='[M+H]+',
+    instrument:str=None,
     exp_name:str='iceberg_elucidation',
     python_path:str='',
     gen_ckpt:str='',
@@ -108,6 +109,7 @@ def iceberg_prediction(
         collision_energies: (List[int]) list of collision energies. Could also be List[List[int]] for each candidate SMILES
         nce: (bool, default=False) if True, the collision energies are treated as normalized collision energy; otherwise, they are treated as absolute eV
         adduct: (str, default='[M+H]+') adduct type. Could also be List[str] for each candidate SMILES
+        instrument: (str, default=None) instrument used (Orbitrap or QTOF)
         exp_name: (str, default='iceberg_elucidation') name of the experiment
         python_path: (str) path to python executable
         gen_ckpt: (str) path to ICEBERG generator model (model 1) checkpoint
@@ -157,6 +159,11 @@ def iceberg_prediction(
                                  f'{list(common.ion2mass.keys())}')
     assert len(adducts) == len(candidate_smiles)
 
+    if isinstance(instrument, str):
+        instruments = [instrument] * len(candidate_smiles)
+    else:
+        instruments = instrument
+
     # remove stereo
     candidate_smiles = [common.rm_stereo(smi) for smi in candidate_smiles]
 
@@ -165,6 +172,7 @@ def iceberg_prediction(
     _, uniq_idx = np.unique(inchikeys, return_index=True)
     candidate_smiles = np.array(candidate_smiles)[uniq_idx].tolist()
     adducts = np.array(adducts)[uniq_idx].tolist()
+    instruments = np.array(instruments)[uniq_idx].tolist()
 
     # get formula & mass & check candidate smiles
     # precursor_mass = common.mass_from_smi(candidate_smiles[0]) + common.ion2mass[adduct]
@@ -193,8 +201,8 @@ def iceberg_prediction(
 
     # generate temp directory
     param_str = exp_name + '|'
-    for cand_smi, adduct, ce in sorted(zip(candidate_smiles, adducts, collision_energies)):
-        param_str += '|' + cand_smi + ';' + str(common.ion2onehot_pos[adduct]) + ';' + ','.join(sorted(ce))
+    for cand_smi, adduct, instrument, ce in sorted(zip(candidate_smiles, adducts, instruments, collision_energies)):
+        param_str += '|' + cand_smi + ';' + str(common.ion2onehot_pos[adduct]) + ';' + str(common.instrument2onehot_pos[instrument]) + ';' + ','.join(sorted(ce))
     param_str += '||' + str(gen_ckpt.absolute()) + '||' + str(inten_ckpt.absolute()) + '||' + cuda_devices + \
                  '||' + f'{batch_size:d}-{num_workers:d}-{sparse_k:d}-{max_nodes:d}||' + f'{threshold:.2f}' + \
                  '||' + ('binned_out' if binned_out else "")
@@ -210,9 +218,9 @@ def iceberg_prediction(
     if not (save_dir / 'iceberg_run_successful').exists():
         # write candidates to tsv
         entries = []
-        for cand_smi, adduct, ce, pmz in zip(candidate_smiles, adducts, collision_energies, precursor_masses):
+        for cand_smi, adduct, instrument, ce, pmz in zip(candidate_smiles, adducts, instruments, collision_energies, precursor_masses):
             entries.append({
-                'spec': exp_name, 'smiles': cand_smi, 'ionization': adduct, 'inchikey': common.inchikey_from_smiles(cand_smi),
+                'spec': exp_name, 'smiles': cand_smi, 'ionization': adduct, 'instrument': instrument, 'inchikey': common.inchikey_from_smiles(cand_smi),
                 'precursor': pmz, 'collision_energies': ce,
             })
         df = pd.DataFrame.from_dict(entries)
