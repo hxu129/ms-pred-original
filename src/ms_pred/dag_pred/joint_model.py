@@ -55,8 +55,8 @@ class JointModel(pl.LightningModule):
             inten_checkpoint
         """
 
-        gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint)
-        inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint)
+        gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint, map_location="cpu")
+        inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint, map_location="cpu")
         return cls(gen_model_obj, inten_model_obj)
 
     def predict_mol(
@@ -132,6 +132,7 @@ class JointModel(pl.LightningModule):
             processed_tree = processed_tree["dgl_tree"]
 
             processed_tree["adduct"] = common.ion2onehot_pos[adct]
+            processed_tree['instrument'] = common.instrument2onehot_pos[instrument]
             processed_tree["name"] = ""
             processed_tree["precursor"] = p_mz
             processed_trees.append(processed_tree)

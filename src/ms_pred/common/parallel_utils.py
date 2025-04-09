@@ -6,6 +6,8 @@ import itertools
 from tqdm import tqdm
 import multiprocess.context as ctx
 ctx._force_start_method('spawn')
+from torch.multiprocessing import Pool, set_start_method
+
 
 def simple_parallel(
     input_list, function, max_cpu=16, timeout=4000, max_retries=3, use_ray: bool = False, task_name="",
@@ -57,6 +59,7 @@ def chunked_parallel(
     max_cpu=16,
     output_func=None,
     task_name="",
+    gpu=False,
     **kwargs,
 ):
     """chunked_parallel.
@@ -88,15 +91,27 @@ def chunked_parallel(
 
     from pathos import multiprocessing as mp
     cpus = min(mp.cpu_count(), max_cpu)
-    with mp.ProcessPool(processes=cpus, **kwargs) as pool:
-        iter_outputs = tqdm(pool.imap(batch_func, chunked_list), total=len(chunked_list), desc=task_name)
-        if output_func is None:
-            list_outputs = list(iter_outputs)
-            # Unroll
-            full_output = [j for i in list_outputs for j in i]
-            return full_output
-        else:
-            output_func(itertools.chain.from_iterable(iter_outputs))
+    if gpu:
+        set_start_method('spawn')
+        with Pool(processes=cpus, **kwargs) as pool:
+            iter_outputs = tqdm(pool.imap(batch_func, chunked_list), total=len(chunked_list), desc=task_name)
+            if output_func is None:
+                list_outputs = list(iter_outputs)
+                # Unroll
+                full_output = [j for i in list_outputs for j in i]
+                return full_output
+            else:
+                output_func(itertools.chain.from_iterable(iter_outputs))
+    else:    
+        with mp.ProcessPool(processes=cpus, **kwargs) as pool:
+            iter_outputs = tqdm(pool.imap(batch_func, chunked_list), total=len(chunked_list), desc=task_name)
+            if output_func is None:
+                list_outputs = list(iter_outputs)
+                # Unroll
+                full_output = [j for i in list_outputs for j in i]
+                return full_output
+            else:
+                output_func(itertools.chain.from_iterable(iter_outputs))
 
 
 def subprocess_parallel(cmd_list, max_parallel=4, max_parallel_per_gpu=None, gpus=None, env_list=None, delay_start=5):
