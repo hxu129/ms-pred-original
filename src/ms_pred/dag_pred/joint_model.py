@@ -145,7 +145,7 @@ class JointModel(pl.LightningModule):
         broken_bonds = safe_device(batch["broken_bonds"])
         max_remove_hs = safe_device(batch["max_remove_hs"])
         max_add_hs = safe_device(batch["max_add_hs"])
-        masses = safe_device(batch["masses"])
+        masses = safe_device(batch["masses"])  # b x n x 2 x 13
 
         assert adduct_shift, 'adduct shift must be enforced'
 
@@ -177,13 +177,37 @@ class JointModel(pl.LightningModule):
             out = inten_preds
         else:
             out = {"spec": [], "frag": []}
+            num_shifts = len(masses[0, 0, :, :].reshape(-1))  # number of shifts,
+                                                              # (1 + h_shift * 2) * 2 if include_unshifted_mz==True
             if not self.inten_model_obj.include_unshifted_mz:
                 masses = masses[:, :, :1, :].contiguous()  # only keep m/z with adduct shift
             for inten_pred, mass, inten_frag_id, out_tree, n in \
                     zip(inten_preds["spec"], masses.cpu().numpy(), inten_frag_ids, out_trees, num_frags.cpu().numpy()):
-                out["spec"].append(np.stack((mass[:n].reshape(-1), inten_pred.reshape(-1)), axis=1))
-                out_frags = out_tree["frags"]
-                out["frag"].append([out_frags[id]["frag"] for id in inten_frag_id])
+                out_mass = mass[:n].reshape(-1)
+                out_inten = inten_pred.reshape(-1)
+                out_frag = []
+                for id in inten_frag_id:
+                    out_frag += [out_tree["frags"][id]["frag"]] * num_shifts
+
+                # merge duplicated mass + frag combinations
+                seen_mass = []
+                seen_frag = []
+                seen_inten = []
+                for i in range(len(out_mass)):
+                    same_mass_ids = np.nonzero(np.abs(out_mass[i] - np.array(seen_mass)) < 0.0001)
+                    same_frag_ids = np.nonzero(np.array(seen_frag) == out_frag[i])
+                    same_mass_frag_ids = np.intersect1d(same_mass_ids, same_frag_ids)
+                    if len(same_mass_frag_ids) > 0:  # this mass + frag has been recorded
+                        assert len(same_mass_frag_ids) == 1  # the entry should be unique
+                        seen_inten[same_mass_frag_ids.item()] += out_inten[i]  # merge intensity
+                    else:  # this mass + frag is new
+                        seen_mass.append(out_mass[i])
+                        seen_frag.append(out_frag[i])
+                        seen_inten.append(out_inten[i])
+
+                # add to output dict
+                out["spec"].append(np.stack((np.array(seen_mass), np.array(seen_inten)), axis=1))
+                out["frag"].append(seen_frag)
 
         if batched_input:
             return out
