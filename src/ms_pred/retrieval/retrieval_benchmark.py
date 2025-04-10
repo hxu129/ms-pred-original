@@ -106,7 +106,12 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
     ## sampled_evs = np.random.choice(evs, 3, p = ())
     if selected_evs:
         true_spec_dict = {k: v for k, v in true_spec_dict.items() if str(k) in selected_evs}
-    for idx, colli_eng in enumerate(true_spec_dict.keys()):
+
+    # standardize keys to str
+    true_spec_dict = {f'{float(k):.0f}': v for k, v in true_spec_dict.items()}
+    cand_preds_dict = [{f'{float(k):.0f}': v for k, v in cand_dict.items()} for cand_dict in cand_preds_dict]
+
+    for idx, colli_eng in enumerate(true_spec_dict.keys()): # TODO: sample
         cand_preds = np.stack([i[colli_eng] for i in cand_preds_dict], axis=0)
         true_spec = true_spec_dict[colli_eng]
 
@@ -294,6 +299,11 @@ def rank_test_entry(
 
     true_mass = common.mass_from_smi(true_smiles)
     mass_bin = common.bin_mass_results(true_mass)
+
+    if binned_pred:
+        num_peaks_avg = np.mean([np.sum(sp > 0) for sp in true_spec.values()])
+    else:
+        num_peaks_avg = np.mean([np.sum(sp[:, 1] > 0) for sp in spec.values()])
     peak_bin_avg = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='mean')
     peak_bin_max = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='max')
     peak_bin_min = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='min')
@@ -303,6 +313,7 @@ def rank_test_entry(
         "total_decoys": len(resorted_ikeys),
         "mass": float(true_mass),
         "mass_bin": mass_bin,
+        "num_peaks_avg": float(num_peaks_avg),
         "peak_bin_avg": peak_bin_avg,
         "peak_bin_max": peak_bin_max,
         "peak_bin_min": peak_bin_min,

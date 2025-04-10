@@ -761,7 +761,8 @@ def build_mgf_str(
                 break
 
         for k, v in meta.items():
-            str_rows.append(f"{k.upper().replace(' ', '_')}={v}")
+            if k not in parent_mass_keys:
+                str_rows.append(f"{k.upper().replace(' ', '_')}={v}")
 
         if merge_charges:
             spec_ar = np.vstack([i[1] for i in spec])

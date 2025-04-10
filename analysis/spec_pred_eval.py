@@ -190,17 +190,18 @@ def main(args):
         copy_true[max_possible_bin] = 0
         cos_sim_zero_pep = cos_sim_fn(copy_pred, copy_true)
 
-        possible_set = set(possible)
-        pred_set = set(pos_bins)
-        overlap = pred_set.intersection(possible_set)
-
-        # Check invalid smiles here
-        invalid = pred_set.difference(possible_set)
-
-        if len(pred_set) == 0:
-            frac_valid = 1.0
-        else:
-            frac_valid = len(overlap) / len(pred_set)
+        # TODO computing validity should use masses with adduct and consider adduct transfer
+        # possible_set = set(possible)
+        # pred_set = set(pos_bins)
+        # overlap = pred_set.intersection(possible_set)
+        #
+        # # Check invalid smiles here
+        # invalid = pred_set.difference(possible_set)
+        #
+        # if len(pred_set) == 0:
+        #     frac_valid = 1.0
+        # else:
+        #     frac_valid = len(overlap) / len(pred_set)
 
         # Compute true overlap
         true_inds = np.argwhere(true_spec > min_inten).flatten()
@@ -221,7 +222,7 @@ def main(args):
             "cos_sim_zero_pep": float(cos_sim_zero_pep),
             "mse": float(mse),
             "entropy_sim": float(entropy_sim),
-            "frac_valid": float(frac_valid),
+            # "frac_valid": float(frac_valid),
             "overlap_coeff": float(overlap_coeff),
             "coverage": float(coverage),
             "len_targ": len(true_bins),
@@ -237,7 +238,7 @@ def main(args):
         running_lists["cos_sim_zero_pep"].append(cos_sim_zero_pep)
         running_lists["mse"].append(mse)
         running_lists["entropy_sim"].append(entropy_sim)
-        running_lists["frac_valid"].append(frac_valid)
+        # running_lists["frac_valid"].append(frac_valid)
         running_lists["overlap_coeff"].append(overlap_coeff)
         running_lists["coverage"].append(coverage)
         running_lists["len_targ"].append(len(true_bins))
