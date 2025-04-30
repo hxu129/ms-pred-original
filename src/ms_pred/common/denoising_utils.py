@@ -2,8 +2,12 @@
 import numpy as np
 try:
     import spectral_denoising as sd
-except ImportError:
-    print("spectral_denoising package not found. Please install it using 'pip install spectral_denoising'.")
+except ImportError as e:
+    # Could also be that the C error is an issue!
+    if "GLIBC" in str(e):
+        raise 
+    else:
+        print("spectral_denoising package not found. Please install it using 'pip install spectral-denoising'.")
 
 # from spectral_denoising repository, source: https://github.com/FanzhouKong/spectral_denoising/blob/main/spectral_denoising/spectral_denoising.py
 def electronic_denoising(msms):
