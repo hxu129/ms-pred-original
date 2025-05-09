@@ -15,6 +15,8 @@ import ms_pred.magma.fragmentation as fragmentation
 import ms_pred.magma.run_magma as magma
 import ms_pred.dag_pred.dag_data as dag_data
 
+import time
+
 
 class FragGNN(pl.LightningModule):
     def __init__(
@@ -271,13 +273,16 @@ class FragGNN(pl.LightningModule):
             raise NotImplementedError()
         elif self.root_encode == "gnn":
             with root_repr.local_scope():
+                ndata = root_repr.ndata["h"]
+                concat_list = [ndata]
                 if self.embed_adduct:
                     embed_adducts_expand = embed_adducts.repeat_interleave(
                         root_repr.batch_num_nodes(), 0
                     )
-                    ndata = root_repr.ndata["h"]
-                    ndata = torch.cat([ndata, embed_adducts_expand], -1)
-                    root_repr.ndata["h"] = ndata
+                    concat_list.append(embed_adducts_expand)                    
+                    # ndata = root_repr.ndata["h"]
+                    # ndata = torch.cat([ndata, embed_adducts_expand], -1)
+                    # root_repr.ndata["h"] = ndata
 
                 if self.embed_collision:
                     embed_collision = torch.cat(
@@ -291,9 +296,10 @@ class FragGNN(pl.LightningModule):
                     embed_collision_expand = embed_collision.repeat_interleave(
                         root_repr.batch_num_nodes(), 0
                     )
-                    ndata = root_repr.ndata["h"]
-                    ndata = torch.cat([ndata, embed_collision_expand], -1)
-                    root_repr.ndata["h"] = ndata
+                    concat_list.append(embed_collision_expand)
+                    # ndata = root_repr.ndata["h"]
+                    # ndata = torch.cat([ndata, embed_collision_expand], -1)
+                    # root_repr.ndata["h"] = ndata
 
                 if self.embed_instrument:
 
@@ -308,15 +314,17 @@ class FragGNN(pl.LightningModule):
                     embed_instruments_expand = embed_instruments.repeat_interleave(
                         root_repr.batch_num_nodes(), 0
                     )
+                    concat_list.append(embed_instruments_expand)
 
-                    ndata = root_repr.ndata["h"]
-                    ndata = torch.cat([ndata, embed_instruments_expand], -1)
-                    root_repr.ndata["h"] = ndata
+                    # ndata = root_repr.ndata["h"]
+                    # ndata = torch.cat([ndata, embed_instruments_expand], -1)
+                    # root_repr.ndata["h"] = ndata
+                root_repr.ndata["h"] = torch.cat(concat_list, -1)
                 root_embeddings = self.root_module(root_repr)
                 root_embeddings = self.pool(root_repr, root_embeddings)
         else:
             pass
-
+        
         # Line up the features to be parallel between fragment avgs and root
         # graphs
         ext_root = root_embeddings[ind_maps]
@@ -391,11 +399,12 @@ class FragGNN(pl.LightningModule):
             mlp_cat_vec,
             dim=1,
         )
-
+        
         output = self.output_map(hidden)
         output = self.sigmoid(output)
         padded_out = nn_utils.pad_packed_tensor(output, graphs.batch_num_nodes(), 0)
         padded_out = torch.squeeze(padded_out, -1)
+
         return padded_out
 
     def loss_fn(self, outputs, targets, natoms):
