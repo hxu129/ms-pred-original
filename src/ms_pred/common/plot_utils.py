@@ -19,11 +19,11 @@ from rdkit.Chem import Draw
 legend_params = dict(frameon=False, facecolor="none", fancybox=False)
 method_colors = {
     "CFM-ID": "#D7D7D7",
-    "MassFormer": "#7C9D97",
-    "Graff-MS": "#A7B7C3",
-    "FraGNNet": "#7B94CC",
-    "ICEBERG (Goldman'24)": "#E9B382",
-    "ICEBERG (Ours)": "#FFD593",
+    "MassFormer": "#E9B382",
+    "GrAFF-MS": "#FFD593",
+    "FraGNNet": "#7C9D97",
+    "ICEBERG (Goldman'24)": "#A7B7C3",
+    "ICEBERG (Ours)": "#7B94CC",
 }
 
 # List all marker symbols in list in commnet
@@ -128,15 +128,15 @@ def set_style():
 
     mpl.rcParams["axes.edgecolor"] = "black"
     mpl.rcParams["axes.linewidth"] = 0.45
-    mpl.rcParams["font.size"] = 8
-    mpl.rcParams["axes.labelsize"] = 8
-    mpl.rcParams["axes.titlesize"] = 8
-    mpl.rcParams["figure.titlesize"] = 8
-    mpl.rcParams["figure.titlesize"] = 8
-    mpl.rcParams["legend.fontsize"] = 6
-    mpl.rcParams["legend.title_fontsize"] = 8
-    mpl.rcParams["xtick.labelsize"] = 6
-    mpl.rcParams["ytick.labelsize"] = 6
+    mpl.rcParams["font.size"] = 6
+    mpl.rcParams["axes.labelsize"] = 6
+    mpl.rcParams["axes.titlesize"] = 6
+    mpl.rcParams["figure.titlesize"] = 6
+    mpl.rcParams["figure.titlesize"] = 6
+    mpl.rcParams["legend.fontsize"] = 5
+    mpl.rcParams["legend.title_fontsize"] = 6
+    mpl.rcParams["xtick.labelsize"] = 5
+    mpl.rcParams["ytick.labelsize"] = 5
 
 
 def set_size(w, h, ax=None):
@@ -156,7 +156,8 @@ def set_size(w, h, ax=None):
     ax.figure.set_size_inches(figw, figh)
 
 
-def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title='', dpi=300, ppm=20, ax=None, largest_mz=None):
+def plot_compare_ms(spec1, spec2, spec1_name='', spec2_name='', ce_label='', dpi=300, ppm=20, ax=None, largest_mz=None,
+                    matched_color='#7C9D97', spec1_color='#58595B', spec2_color='#58595B'):
     if ax is None:
         fig = plt.figure(figsize=(6, 4), dpi=dpi)
         ax = plt.gca()
@@ -173,33 +174,39 @@ def plot_compare_ms(spec1, spec2, spec1_name='spec1', spec2_name='spec2', title=
         for mz, inten in zip(spec[:, 0], intensity_arr):
             mz_in_spec1 = np.min(np.abs(mz - spec1[:, 0])) / mz < 1e-6 * ppm
             mz_in_spec2 = np.min(np.abs(mz - spec2[:, 0])) / mz < 1e-6 * ppm
-            color = '#7C9D97' if mz_in_spec1 and mz_in_spec2 else '#58595B'
+            if mz_in_spec1 and mz_in_spec2:
+                color = matched_color
+            elif inten > 0:
+                color = spec1_color
+            else:
+                color = spec2_color
             markerline, stemlines, baseline = plt.stem(mz, inten, color, markerfmt=" ", basefmt=" ")
-            plt.setp(stemlines, 'linewidth', 0.5)
+            plt.setp(stemlines, 'linewidth', 0.25)
 
-    plt.axhline(y=0, color='k', linestyle='-', linewidth=0.45)
-    plt.ylabel('intensity', rotation=0)
-    ax.yaxis.set_label_coords(-0.02, 1.02)
-    plt.text(-0.07, 0.5, spec1_name, rotation=90, rotation_mode='anchor',
+    plt.axhline(y=0, color='k', linestyle='-', linewidth=0.4)
+    plt.text(-0.07, 0.6, spec1_name, rotation=90, rotation_mode='anchor',
              verticalalignment='bottom', horizontalalignment='center', transform=ax.get_yaxis_transform())
-    plt.text(-0.07, -0.5, spec2_name, rotation=90, rotation_mode='anchor',
+    plt.text(-0.07, -0.6, spec2_name, rotation=90, rotation_mode='anchor',
              verticalalignment='bottom', horizontalalignment='center', transform=ax.get_yaxis_transform())
+    if ce_label:
+        plt.text(0.02, 0.02, ce_label,
+                 verticalalignment='bottom', horizontalalignment='left', transform=ax.get_yaxis_transform())
+
     plt.xlabel('m/z', rotation=0)
-    ax.xaxis.set_label_coords(1.02, -0.01)
+    ax.xaxis.set_label_coords(0.5, -0.2)
 
     ax.set_yticks(ticks=[-1, 0, 1])
-    ax.set_yticklabels(['1.0', '0.0', '1.0'])
-    ax.set_yticks(ticks=[-0.5, 0.5], minor=True)
-    ax.set_yticklabels(['0.5', '0.5'], minor=True)
+    ax.set_yticklabels(['1', '0', '1'])
 
     ax.set_xlim(0, largest_mz * 1.05)
     ax.set_ylim(-1.1, 1.1)
 
-    if title:
-        plt.title(title)
+    # hide top and right rules
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
 
 
-def plot_ms(spec, spec_name='spec', title='', dpi=300, ax=None, largest_mz=None):
+def plot_ms(spec, spec_name='', ce_label='', dpi=300, ax=None, largest_mz=None):
     if ax is None:
         fig = plt.figure(figsize=(6, 2), dpi=dpi)
         ax = plt.gca()
@@ -214,27 +221,28 @@ def plot_ms(spec, spec_name='spec', title='', dpi=300, ax=None, largest_mz=None)
     intensity_arr = spec[:, 1]
     for mz, inten in zip(spec[:, 0], intensity_arr):
         markerline, stemlines, baseline = plt.stem(mz, inten, '#58595B', markerfmt=" ", basefmt=" ")
-        plt.setp(stemlines, 'linewidth', 0.5)
+        plt.setp(stemlines, 'linewidth', 0.25)
 
-    plt.axhline(y=0, color='k', linestyle='-', linewidth=0.45)
-    plt.ylabel(f'intensity', rotation=0)
-    ax.yaxis.set_label_coords(-0.02, 1.02)
+    plt.axhline(y=0, color='k', linestyle='-', linewidth=0.4)
+    plt.ylabel(spec_name)
+    ax.yaxis.set_label_coords(-0.05, 0.5)
 
-    plt.text(-0.07, 0.5, spec_name, rotation=90, rotation_mode='anchor',
-             verticalalignment='bottom', horizontalalignment='center', transform=ax.get_yaxis_transform())
+    if ce_label:
+        plt.text(0.02, 0.02, ce_label,
+                 verticalalignment='bottom', horizontalalignment='left', transform=ax.get_yaxis_transform())
+
     plt.xlabel('m/z', rotation=0)
-    ax.xaxis.set_label_coords(1.02, -0.01)
+    ax.xaxis.set_label_coords(0.5, -0.25)
 
     ax.set_yticks(ticks=[0, 1])
-    ax.set_yticklabels(['0.0', '1.0'])
-    ax.set_yticks(ticks=[0.5], minor=True)
-    ax.set_yticklabels(['0.5'], minor=True)
+    ax.set_yticklabels(['0', '1'])
 
     ax.set_xlim(0, largest_mz * 1.05)
     ax.set_ylim(0, 1.1)
 
-    if title:
-        plt.title(title)
+    # hide top and right rules
+    for spine in ['top', 'right']:
+        ax.spines[spine].set_visible(False)
 
 
 def _parse_svg_path_data(d, offset=(0, 0), zoom=(1, 1)):
