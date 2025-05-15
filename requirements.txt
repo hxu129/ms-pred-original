@@ -11,3 +11,5 @@ omegaconf
 pubchempy
 pygmtools
 h5py
+msbuddy
+lightgbm
