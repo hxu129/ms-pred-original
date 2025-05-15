@@ -264,7 +264,7 @@ def iceberg_prediction(
                --save-dir {save_dir} \\
                --adduct-shift''')
         if cuda_devices:
-            cmd = f'CUDA_VISIBLE_DEVICES={cuda_devices} ' + cmd + ' \\           --gpu'
+            cmd = f'CUDA_VISIBLE_DEVICES={cuda_devices} ' + cmd + ' \\\n           --gpu'
         assert not binned_out, 'Elucidation not supported for binned_out=True'
         if binned_out:
             cmd += ' \\           --binned_out'
@@ -289,6 +289,7 @@ def load_real_spec(
     nist_path:str='data/spec_datasets/nist20/spec_files.hdf5',
     denoise_spectrum:bool=True,
     intensity_threshold:float=0.05,
+    **kwargs,
 ):
     if real_spec_type == 'raw':
         meta = {}
@@ -521,8 +522,9 @@ def explain_peaks(
     ppm:int=20,
     save_path:str=None,
     axes:list=None,
-    display_ce=True,
-    display_expmass=True,
+    display_ce:bool=True,
+    display_expmass:bool=True,
+    display_mass_inten_thresh:float=0.3,
     dpi:int=500,
     **kwargs,
 ):
@@ -546,6 +548,7 @@ def explain_peaks(
         axes: (list) matplotlib axis(es) for the plots
         display_ce: (bool, default=True) display collision energy
         display_expmass: (bool, default=True) display experiment mass values
+        display_mass_inten_thresh: (float, default=0.05) when the intensity is over this threshold, display the m/z value in the plot
         dpi: (int, default=500) dpi of plots
     """
     from matplotlib.offsetbox import (OffsetImage, AnnotationBbox)
@@ -622,7 +625,7 @@ def explain_peaks(
                 else:
                     mz_to_plot[mz.round(2)] = mz, inten
             for _, (mz, inten) in mz_to_plot.items():
-                if inten > 0.05:
+                if inten > display_mass_inten_thresh:
                     plt.text(mz, -inten - 0.06, f'{mz:.4f}', fontsize=4, alpha=0.7, horizontalalignment='center')
 
         if ax is None:
