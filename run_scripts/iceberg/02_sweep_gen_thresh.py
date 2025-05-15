@@ -6,7 +6,6 @@ import subprocess
 
 batch_size = 8
 list_devices = [0, 1]
-gpu_workers = len(list_devices) * 2
 workers = 32
 devices = ",".join([str(_) for _ in list_devices])
 python_file = "src/ms_pred/dag_pred/predict_gen.py"
@@ -16,33 +15,29 @@ subform_name = "magma_subform_50.hdf5"
 debug = False
 
 res_entries = [
-    {"folder": "results/dag_nist20/scaffold_1/",
-     "dataset": "nist20",
-     "test_split": "scaffold_1"},
-
     {"folder": "results/dag_nist20/split_1_rnd1/",
      "dataset": "nist20",
      "test_split": "split_1"},
 
-    {"folder": "results/dag_nist20/split_1_rnd2/",
-     "dataset": "nist20",
-     "test_split": "split_1"},
-
-    {"folder": "results/dag_nist20/split_1_rnd3/",
-     "dataset": "nist20",
-     "test_split": "split_1"},
-
-    {"folder": "results/dag_canopus_train_public/split_1_rnd1/", 
-     "dataset": "canopus_train_public",
-     "test_split": "split_1"},
-
-    {"folder": "results/dag_canopus_train_public/split_1_rnd2/", 
-     "dataset": "canopus_train_public",
-     "test_split": "split_1"},
-
-    {"folder": "results/dag_canopus_train_public/split_1_rnd3/", 
-     "dataset": "canopus_train_public",
-     "test_split": "split_1"},
+    # {"folder": "results/dag_nist20/split_1_rnd2/",
+    #  "dataset": "nist20",
+    #  "test_split": "split_1"},
+    #
+    # {"folder": "results/dag_nist20/split_1_rnd3/",
+    #  "dataset": "nist20",
+    #  "test_split": "split_1"},
+    #
+    # {"folder": "results/dag_nist20/scaffold_1_rnd1/",
+    #  "dataset": "nist20",
+    #  "test_split": "scaffold_1"},
+    #
+    # {"folder": "results/dag_nist20/scaffold_1_rnd2/",
+    #  "dataset": "nist20",
+    #  "test_split": "scaffold_1"},
+    #
+    # {"folder": "results/dag_nist20/scaffold_1_rnd3/",
+    #  "dataset": "nist20",
+    #  "test_split": "scaffold_1"},
 ]
 
 if debug:
