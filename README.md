@@ -3,8 +3,9 @@
 This repository contains implementations for the following spectrum simulator models predicting molecular tandem mass spectra from molecules: 
 
 
-- ️️️️ ❄️ ICEBER️️G ❄️: [Inferring CID by Estimating Breakage Events and Reconstructing their Graphs](http://arxiv.org/abs/2304.13136) (now available to run through [GNPS2](https://gnps2.org/))
-- 🧣 SCARF 🧣: [Subformula Classification for Autoregressively Reconstructing Fragmentations](https://arxiv.org/abs/2303.06470),
+- ❄️ ICEBER️️G ❄️: [Inferring CID by Estimating Breakage Events and Reconstructing their Graphs](http://arxiv.org/abs/2304.13136) (now available to run through [GNPS2](https://gnps2.org/))
+- 🏃‍ MARASON 🏃‍: [Neural Graph Matching Improves Retrieval Augmented Generation in Molecular Machine Learning](https://arxiv.org/html/2502.17874)
+- 🧣 SCARF 🧣: [Subformula Classification for Autoregressively Reconstructing Fragmentations](https://arxiv.org/abs/2303.06470)
 
 ICEBERG predicts spectra at the level of molecular fragments, whereas SCARF predicts spectra at the level of chemical formula. In order to fairly compare various spectra models, we implement a number of baselines and alternative models using equivalent settings across models (i.e., same covariates, hyeprparmaeter sweeps for each, etc.):
  
@@ -15,7 +16,7 @@ ICEBERG predicts spectra at the level of molecular fragments, whereas SCARF pred
 5. *CFM-ID* from [CFM-ID 4.0: More Accurate ESI-MS/MS Spectral Prediction and Compound Identification](https://pubs.acs.org/doi/10.1021/acs.analchem.1c01465) (not retrained; instructions for running are provided)
 
 
-Contributors: Sam Goldman, John Bradshaw, Janet Li, Jiayi Xin, Connor W. Coley
+Contributors: Sam Goldman, Runzhong Wang, Rui-Xi Wang, Mrunali Manjrekar, John Bradshaw, Janet Li, Jiayi Xin, Connor W. Coley
 
 
 ![Model graphic](github_teaser.png)
@@ -42,7 +43,7 @@ mamba activate ms-gen
 pip install -r requirements.txt
 python3 setup.py develop
 ```
-Note: if you are using GPU, please uncomment the CUDA-based packages for DGL and comment the CPU package in ``envorinment.yaml``.
+Note: if you are not using GPU, please comment the CUDA-based packages in ``envorinment.yaml``.
 
 
 ## Quickstart <a name="quickstart"></a>
@@ -306,43 +307,53 @@ predictios `analysis/form_pred_eval.py` and spectra predictions
 
 Additional analyses used for figure generation were conducted in `notebooks/`.
 
+## Structural elucidation <a name="elucidation"></a>
+
+Forward models could be applied for structural elucidation tasks with a set of candidate structures. An example workflow by taking all PubChem structures with the same chemical formula is shown in [``notebooks/iceberg_2025_arxiv/iceberg_demo_pubchem_elucidation.ipynb``](notebooks/iceberg_2025_arxiv/iceberg_demo_pubchem_elucidation.ipynb). In this example, ICEBERG predicts simulated spectra for all candidates, then all candidates are ranked based on their entropy similarities to the experimental spectrum.
+
 ## Augmentation <a name="augmentation"></a>
 
-A common use case for forward spectrum prediction models is to use the trained model as a surrogate model for augmenting an inverse model (e.g., [MIST](http://github.com/samgoldman97/mist/)). An example workflow for doing this is shown in `run_scripts/iceberg_augmentation`. The target dataset including a labels file, spectrum files, split, and target augmetnation file for prediction should first be coppied into the `data/spec_datasets`. Once this is complete, the runscripts folder can be copied, modified to use the datset of interest, and run. The ideal output will be a single MGF and labels files including the ouptut predictions. 
+One use case for forward spectrum prediction models is to use the trained model as a surrogate model for augmenting an inverse model (e.g., [MIST](http://github.com/samgoldman97/mist/)). An example workflow for doing this is shown in `run_scripts/iceberg_augmentation`. The target dataset including a labels file, spectrum files, split, and target augmetnation file for prediction should first be coppied into the `data/spec_datasets`. Once this is complete, the runscripts folder can be copied, modified to use the datset of interest, and run. The ideal output will be a single MGF and labels files including the ouptut predictions. 
 
 
 ## Citation <a name="citation"></a>
 
-We ask any user of this repository to cite the following works based upon the portion of the repository used:
+We ask any user of this repository to cite the following works based upon the portion of the repository used.
 
+SCARF model:
 ```
-@article{https://doi.org/10.48550/arxiv.2303.06470,
-  doi = {10.48550/ARXIV.2303.06470},
-  
-  url = {https://arxiv.org/abs/2303.06470},
-  
-  author = {Goldman, Samuel and Bradshaw, John and Xin, Jiayi and Coley, Connor W.},
-  
-  keywords = {Quantitative Methods (q-bio.QM), Machine Learning (cs.LG), FOS: Biological sciences, FOS: Biological sciences, FOS: Computer and information sciences, FOS: Computer and information sciences},
-  
-  title = {Prefix-tree Decoding for Predicting Mass Spectra from Molecules},
-  
-  publisher = {arXiv},
-  
-  year = {2023},
-  
-  copyright = {Creative Commons Attribution Share Alike 4.0 International}
+@article{goldman2023prefix,
+  title={Prefix-tree decoding for predicting mass spectra from molecules},
+  author={Goldman, Samuel and Bradshaw, John and Xin, Jiayi and Coley, Connor},
+  journal={Advances in neural information processing systems},
+  volume={36},
+  pages={48548--48572},
+  year={2023}
 }
+```
 
-@misc{goldman2023generating,
-      title={Generating Molecular Fragmentation Graphs with Autoregressive Neural Networks}, 
-      author={Samuel Goldman and Janet Li and Connor W. Coley},
-      year={2023},
-      eprint={2304.13136},
-      archivePrefix={arXiv},
-      primaryClass={q-bio.QM}
+ICEBERG model:
+```
+@article{goldman2024generating,
+  title={Generating molecular fragmentation graphs with autoregressive neural networks},
+  author={Goldman, Samuel and Li, Janet and Coley, Connor W},
+  journal={Analytical Chemistry},
+  volume={96},
+  number={8},
+  pages={3419--3428},
+  year={2024},
+  publisher={ACS Publications}
 }
+```
 
+MARASON model:
+```
+@article{wang2025neural,
+  title={Neural Graph Matching Improves Retrieval Augmented Generation in Molecular Machine Learning},
+  author={Wang, Runzhong and Wang, Rui-Xi and Manjrekar, Mrunali and Coley, Connor W},
+  journal={International Conference on Machine Learning},
+  year={2025}
+}
 ```
 
 In addition, we utilize both the NEIMS approach for our binned FFN and GNN encoders, 3DMolMS, GRAFF-MS, Massformer, MAGMa for constructing formula labels, and CFM-ID as a baseline. We encourage considering the following additional citations:
