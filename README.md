@@ -29,8 +29,9 @@ Contributors: Sam Goldman, Runzhong Wang, Rui-Xi Wang, Mrunali Manjrekar, John B
 3. [Data](#data)  
 4. [Experiments](#experiments)    
 5. [Analysis](#analysis)    
-6. [Augmentation](#augmentation)    
-7. [Citation](#citation)    
+6. [Structural elucidation](#elucidation)    
+7. [Augmentation](#augmentation)    
+8. [Citation](#citation)    
 
 
 ## Install & setup <a name="setup"></a>
