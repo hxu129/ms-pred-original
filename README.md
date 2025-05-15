@@ -155,7 +155,7 @@ training, and predict calls can be  made using the following scripts respectivel
 2.  `python src/ms_pred/scarf_pred/train_inten.py`
 3.  `python src/ms_pred/scarf_pred/predict_smis.py`
 
-An additional notebook showcasing how to individually load models and make predictions can be found at `notebooks/scarf_demo.ipynb`. 
+An additional notebook showcasing how to individually load models and make predictions can be found at `notebooks/scarf_2023_neurips/scarf_demo.ipynb`. 
 
 We provide scripts showing how we conducted hyperparameter optimization as
 well:
@@ -185,7 +185,9 @@ training, and predict calls can be  made using the following scripts respectivel
 2.  `python src/ms_pred/dag_pred/train_inten.py`
 3.  `python src/ms_pred/dag_pred/predict_smis.py`
 
-An additional notebook showcasing how to individually load models and make predictions can be found at `notebooks/iceberg_demo.ipynb`.
+An additional notebook showcasing how to individually load models and make predictions can be found at `notebooks/iceberg_2024_analy_chem/iceberg_demo.ipynb`.
+
+An example of how to use ICEBERG for structural elucidation campaigns can be found at ``notebooks/iceberg_2025_arxiv/iceberg_demo_pubchem_elucidation.ipynb``.
 
 The models were hyperoptimized using the following scripts:  
 1. `run_scripts/dag_model/hyperopt_01_dag.sh`   
