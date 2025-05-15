@@ -1,14 +1,5 @@
 import numpy as np
 
-try:
-    import spectral_denoising as sd
-except ImportError as e:
-    # Could also be that the C error is an issue!
-    if "GLIBC" in str(e):
-        raise
-    else:
-        print("spectral_denoising package not found. Please install it using 'pip install spectral-denoising'.")
-
 
 # from spectral_denoising repository, source: https://github.com/FanzhouKong/spectral_denoising/blob/main/spectral_denoising/spectral_denoising.py
 def electronic_denoising(msms):
@@ -83,46 +74,3 @@ def pack_spectrum(mass, intensity):
         return (np.array([mass, intensity]).T)
     else:
         return (np.nan)
-
-
-def denoise_spectrum(spec):
-    """
-    (Custom) denoise a single spectrum using electronic denoising.
-
-    Parameters:
-        spec (numpy.ndarray): The first item is always m/z and the second item is intensity. [i.e., not binned]
-
-    Returns:
-        numpy.ndarray: The cleaned spectrum with electronic noises removed. If no ion presents, will return np.nan.
-    """
-    if isinstance(spec, float):
-        return np.nan
-
-    spec = electronic_denoising(spec)
-    spec = spec[spec[:, 1] > 0.03]
-
-    return spec
-
-
-def denoise_spectra_dict(spec_dict, experimental=False, **kwargs):
-    """
-    # TODO:
-    # include electronic
-    # include formula-based (for experimental spectra)
-    # and something that's across energy
-    """
-
-    spec_dict_new = dict()
-    for ev, spec in spec_dict.items():
-        spec_dict_new[ev] = denoise_spectrum(spec)
-        if experimental:
-            spec_dict_new[ev] = denoise_spectrum_kong(spec, **kwargs)
-
-    return spec_dict_new
-
-
-def denoise_spectrum_kong(spec, smiles, adduct, precursor_mz):
-    spec = sd.spectral_denoising(spec, smiles, adduct)
-    # clean up peak around precursor m/z... using +=2 for now but can change.
-    spec = spec[(np.abs(spec[:, 0] - precursor_mz) > 2) | (np.abs(spec[:, 0] - precursor_mz) < 0.02)]
-    return spec
