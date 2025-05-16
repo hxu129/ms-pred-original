@@ -2,7 +2,7 @@ launcher_args: {experiment_name: massformer_baseline_nist20,
   script_name: "src/ms_pred/massformer_pred/train.py",
   slurm_script: launcher_scripts/generic_slurm.sh, 
   launch_method: local,
-  visible_devices: [2],
+  visible_devices: [0],
 }
 universal_args:
   _slurm_args:
@@ -12,12 +12,11 @@ universal_args:
   gpu: [True]
 
   seed: [1]
-  num-workers: [16]
+  num-workers: [64]
   batch-size: [128]
-  max-epochs: [200]
+  max-epochs: [20]
 
   dataset-name: [nist20]
-  split-name: [split_1.tsv] 
 
   learning-rate: [0.00014]
   lr-decay-rate: [0.853]
@@ -43,8 +42,9 @@ universal_args:
 
   weight-decay: [1e-7]
 
-  form-dir-name: ['no_subform']
+  form-dir-name: ['no_subform.hdf5']
   embed-adduct: [true]
+  embed-collision-energy: [true]
 
 iterative_args:
   -  split-name: [split_1.tsv]
@@ -57,4 +57,11 @@ iterative_args:
      save-dir: [split_1_rnd3]
      seed: [3]
   -  split-name: [scaffold_1.tsv]
-     save-dir: [scaffold_1]
+     save-dir: [scaffold_1_rnd1]
+     seed: [1]
+  -  split-name: [scaffold_1.tsv]
+     save-dir: [scaffold_1_rnd2]
+     seed: [2]
+  -  split-name: [scaffold_1.tsv]
+     save-dir: [scaffold_1_rnd3]
+     seed: [3]

@@ -2,7 +2,7 @@ launcher_args: {experiment_name: graff_ms_baseline_nist20,
   script_name: "src/ms_pred/graff_ms/train.py",
   slurm_script: launcher_scripts/generic_slurm.sh, 
   launch_method: local,
-  visible_devices: [2],
+  visible_devices: [0],
 }
 universal_args:
   _slurm_args:
@@ -14,7 +14,7 @@ universal_args:
   seed: [1]
   num-workers: [16]
   batch-size: [64]
-  max-epochs: [200]
+  max-epochs: [50]
 
   dataset-name: [nist20]
   split-name: [split_1.tsv] 
@@ -33,8 +33,9 @@ universal_args:
   set-layers: [0]
   use-reverse: [false]
 
-  form-dir-name: ['magma_subform_50_with_raw']
+  form-dir-name: ['magma_subform_50_with_raw.hdf5']
   embed-adduct: [true]
+  embed-collision-energy: [true]
   mpnn-type: [GGNN]
   num-fixed-forms: [5000]
 
@@ -52,4 +53,13 @@ iterative_args:
      seed: [3]
 
   -  split-name: [scaffold_1.tsv]
-     save-dir: [scaffold_1]
+     save-dir: [scaffold_1_rnd1]
+     seed: [1]
+
+  -  split-name: [scaffold_1.tsv]
+     save-dir: [scaffold_1_rnd2]
+     seed: [2]
+
+  -  split-name: [scaffold_1.tsv]
+     save-dir: [scaffold_1_rnd3]
+     seed: [3]
