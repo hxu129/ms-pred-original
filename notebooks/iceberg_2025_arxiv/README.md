@@ -10,7 +10,7 @@ example reported in the paper on the identification of GABA-Arg, with step-by-st
 * The other notebooks are meant to help reproduce the figures:
   * ``iceberg_fig_qualitative.ipynb`` plots the qualitative study of bond-breaking
   * ``iceberg_fig_quantitative.ipynb`` plots the quantitative results
-  * ``iceberg_fig_visual_msms.ipynb`` plots all the visualized of MS/MS
+  * ``iceberg_fig_visual_msms.ipynb`` plots all the visualizations of MS/MS
   * ``iceberg_pesticide_kinetics.ipynb`` plots the kinetics of carbendazim 
   * ``iceberg_pooled_cn_coupling.ipynb`` plots the results for the pooled C-N coupling experiment
   * ``iceberg_withanolide_elucidation.ipynb`` plots the results for the biosynthesis pathway elucidation for withanolides
