@@ -273,7 +273,7 @@ def rank_test_entry(
     if binned_pred:
         num_peaks_avg = np.mean([np.sum(sp > 0) for sp in true_spec.values()])
     else:
-        num_peaks_avg = np.mean([np.sum(sp[:, 1] > 0) for sp in spec.values()])
+        num_peaks_avg = np.mean([np.sum(sp[:, 1] > 0) for sp in true_spec.values()])
     peak_bin_avg = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='mean')
     peak_bin_max = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='max')
     peak_bin_min = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='min')

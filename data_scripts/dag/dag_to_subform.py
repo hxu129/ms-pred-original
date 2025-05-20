@@ -40,14 +40,13 @@ def dag_file_to_form(dag_file: str, h5_path: Path, all_h_shifts: bool = False):
     """
     h5 = common.HDF5Dataset(h5_path)
     dag = json.loads(h5.read_str(dag_file))
-    root = dag["root_inchi"]
-    base_form = common.form_from_inchi(root)
-    smiles = common.smiles_from_inchi(root)
+    smiles = dag["root_canonical_smiles"]
+    base_form = common.form_from_smi(smiles)
     name = Path(dag_file).stem.replace("pred_", "")
     outname = f"{name}.json"
 
     frags = dag["frags"]
-    engine = fragmentation.FragmentEngine(mol_str=root, mol_str_type="inchi")
+    engine = fragmentation.FragmentEngine(mol_str=smiles, mol_str_type="smiles")
     forms, mz, intens = [], [], []
     for k, v in frags.items():
         base_mass = engine.single_mass(v["frag"])

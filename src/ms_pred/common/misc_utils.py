@@ -732,7 +732,7 @@ def batches(it, chunk_size: int):
 
 def batches_num_chunks(it, num_chunks: int):
     """Consume an iterable in batches of size chunk_size""" ""
-    chunk_size = len(it) // num_chunks
+    chunk_size = len(it) // num_chunks + 1
     return batches(it, chunk_size)
 
 

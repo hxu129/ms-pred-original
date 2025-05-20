@@ -2,8 +2,7 @@
 
 This repository contains implementations for the following spectrum simulator models predicting molecular tandem mass spectra from molecules: 
 
-
-- ❄️ ICEBER️️G ❄️: [Inferring CID by Estimating Breakage Events and Reconstructing their Graphs](http://arxiv.org/abs/2304.13136) (now available to run through [GNPS2](https://gnps2.org/))
+- 🧊 ICEBERG 🧊️: [Inferring CID by Estimating Breakage Events and Reconstructing their Graphs](http://arxiv.org/abs/2304.13136) (now available to run through [GNPS2](https://gnps2.org/))
 - 🏃‍ MARASON 🏃‍: [Neural Graph Matching Improves Retrieval Augmented Generation in Molecular Machine Learning](https://arxiv.org/html/2502.17874) (Code merging WIP)
 - 🧣 SCARF 🧣: [Subformula Classification for Autoregressively Reconstructing Fragmentations](https://arxiv.org/abs/2303.06470)
 
@@ -12,7 +11,7 @@ ICEBERG predicts spectra at the level of molecular fragments, whereas SCARF pred
 1. *NEIMS* using both FFN and GNN encoders from [Rapid prediction of electron–ionization mass spectrometry using neural networks](https://pubs.acs.org/doi/full/10.1021/acscentsci.9b00085)    
 2. *MassFormer* from [MassFormer: Tandem Mass Spectrum Prediction for Small Molecules using Graph Transformers](https://arxiv.org/abs/2111.04824)  
 3. *3DMolMS* from [3DMolMS: Prediction of Tandem Mass Spectra from Three Dimensional Molecular Conformations](https://www.biorxiv.org/content/10.1101/2023.03.15.532823v1)  
-4. *GRAFF-MS* from [Efficiently predicting high resolution mass spectra with graph neural networks](https://arxiv.org/pdf/2301.11419.pdf)
+4. *GrAFF-MS* from [Efficiently predicting high resolution mass spectra with graph neural networks](https://arxiv.org/pdf/2301.11419.pdf)
 5. *CFM-ID* from [CFM-ID 4.0: More Accurate ESI-MS/MS Spectral Prediction and Compound Identification](https://pubs.acs.org/doi/10.1021/acs.analchem.1c01465) (not retrained; instructions for running are provided)
 
 
@@ -69,7 +68,7 @@ Please note models have been updated since the original release to correct for a
 
 ## Data <a name="data"></a>
 
-A data subset from the GNPS database including processed dag annotations (magma\_outputs/), subformulae (subformulae/), retrieval databases (retrieval/), splits (splits/), and spectra files (spec\_files/) can be downloaded into ``data/spec_datasets/canopus_train_public``. Note CANOPUS is an earlier name of the GNPS dataset, as explained in our ICEBERG paper.
+A data subset from the GNPS database including processed dag annotations (magma\_outputs/), subformulae (subformulae/), retrieval databases (retrieval/), splits (splits/), and spectra files (spec\_files/) can be downloaded into ``data/spec_datasets/canopus_train_public``. Note CANOPUS is an earlier name of the NPLIB1 dataset, as explained in our ICEBERG paper.
 
 ```
 . data_scripts/download_gnps.sh
@@ -133,6 +132,43 @@ Processed tables are already included inside `canopus_train_public`.
  
 ## Experiments <a name="experiments"></a>
 
+### ICEBERG
+
+ICEBERG is our recommended model with a 40% top-1 retrieval accuracy, benchmarked with [M+H]+ adduct on the NIST'20 dataset. 
+ICEBERG is trained in two parts: a learned fragment generator and an intensity predictor. The pipeline for training and evaluating this model can be accessed in `run_scripts/iceberg/`. 
+There is an all-in-one script ``run_scripts/iceberg/run_all.sh`` that trains the up-to-date version of ICEBERG on NIST'20 dataset described in Wang et al. (2025). 
+The archived version released with [Goldman et al. (2024)](http://arxiv.org/abs/2304.13136) is at the [``iceberg_analychem_2024`` branch](https://github.com/coleygroup/ms-pred/tree/iceberg_analychem_2024).
+The internal pipeline used to conduct experiments can be followed below:
+
+1. *Train dag model*: `run_scripts/iceberg/01_run_dag_gen_train.sh`   
+2. *Sweep over the number of fragments to generate*: `run_scripts/iceberg/02_sweep_gen_thresh.py`     
+3. *Use model 1 to predict model 2 training set*: `run_scripts/iceberg/03_run_dag_gen_predict.sh`   
+4. *Train intensity model, including contrastive training*: `run_scripts/iceberg/04_train_dag_inten.sh`   
+5. *Make and evaluate intensity predictions*: `run_scripts/iceberg/05_predict_dag_inten.py`  
+6. *Run retrieval*: `run_scripts/iceberg/06_run_retrieval.py`
+
+> The above scripts will only run for split_1_rnd1 (random split, seed=1), which is suitable if you want to train your own ICEBERG for structural elucidation applications.
+> 
+> If you want to replicate our reported result with random + scaffold splits and 3 random seeds, please uncomment
+> all entries in the following files
+> * ``configs/iceberg/*.yaml``
+> * ``02_sweep_gen_thresh.py``
+> * ``05_predict_dag_inten.py``
+> * ``06_run_retrieval.py``
+
+> You need two GPUs with at least 24GB RAM to train ICEBERG (we used NVIDIA A5000 for development). If you are trying to
+> train the model on a smaller GPU, try cutting down the batch size and skip the contrastive 
+> finetuning step. Note that changing training parameters will affect the model performance.
+
+Instead of running in batched pipeline model, individual gen training, inten
+training, and predict calls can be  made using the following scripts respectively:
+
+1. `python src/ms_pred/dag_pred/train_gen.py`
+2. `python src/ms_pred/dag_pred/train_inten.py`
+3. `python src/ms_pred/dag_pred/predict_smis.py`
+
+An example of how to use ICEBERG for structural elucidation campaigns can be found at ``notebooks/iceberg_2025_arxiv/iceberg_demo_pubchem_elucidation.ipynb``.
+
 
 ### SCARF
 
@@ -152,8 +188,8 @@ Instead of running in batched pipeline model, individual gen training, inten
 training, and predict calls can be  made using the following scripts respectively:
 
 1. `python src/ms_pred/scarf_pred/train_gen.py`
-2.  `python src/ms_pred/scarf_pred/train_inten.py`
-3.  `python src/ms_pred/scarf_pred/predict_smis.py`
+2. `python src/ms_pred/scarf_pred/train_inten.py`
+3. `python src/ms_pred/scarf_pred/predict_smis.py`
 
 An additional notebook showcasing how to individually load models and make predictions can be found at `notebooks/scarf_2023_neurips/scarf_demo.ipynb`. 
 
@@ -164,42 +200,12 @@ well:
 2. *Hyperopt scarf inten model*: `run_scripts/scarf_model/02_sweep_scarf_gen_thresh.py`  
 
 
-### ICEBERG
-
-ICEBRG models, like SCARF, are trained in two parts: a learned fragment generator and an intensity predictor. The pipeline for training and evaluating this model can be accessed in `run_scripts/dag_model/`. The internal pipeline used to conduct experiments can be followed below:
-
-1. *Train dag model*: `run_scripts/dag_model/01_run_dag_gen_train.sh`   
-2. *Sweep over the number of fragments to generate*: `run_scripts/dag_model/02_sweep_gen_thresh.py`     
-3. *Use model 1 to predict model 2 training set*: `run_scripts/dag_model/03_run_dag_gen_predict.sh`   
-4. *Train intensity model*: `run_scripts/dag_model/04_train_dag_inten.sh`   
-5. *Make and evaluate intensity predictions*: `run_scripts/dag_model/05_predict_dag_inten.py`  
-6. *Run retrieval*: `run_scripts/dag_model/06_run_retrieval.py`  
-7. *Time iceberg*: `run_scripts/dag_model/07_time_dag.py`  
-8. *Export dag predictions* `run_scripts/dag_model/08_export_preds.py`  
-
-
-Instead of running in batched pipeline model, individual gen training, inten
-training, and predict calls can be  made using the following scripts respectively:
-
-1. `python src/ms_pred/dag_pred/train_gen.py`
-2.  `python src/ms_pred/dag_pred/train_inten.py`
-3.  `python src/ms_pred/dag_pred/predict_smis.py`
-
-An additional notebook showcasing how to individually load models and make predictions can be found at `notebooks/iceberg_2024_analy_chem/iceberg_demo.ipynb`.
-
-An example of how to use ICEBERG for structural elucidation campaigns can be found at ``notebooks/iceberg_2025_arxiv/iceberg_demo_pubchem_elucidation.ipynb``.
-
-The models were hyperoptimized using the following scripts:  
-1. `run_scripts/dag_model/hyperopt_01_dag.sh`   
-2. `run_scripts/dag_model/hyperopt_02_inten.sh`  
-
-
 ### FFN Spec 
 
 Experiment pipeline utilized:  
 1. *Train models*: `run_scripts/ffn_model/01_run_ffn_train.sh`
 2. *Predict and eval*: `run_scripts/ffn_model/02_predict_ffn.py`
-3. *Retreival experiments*: `run_scripts/ffn_model/03_run_retrieval.py`
+3. *Retrieval experiments*: `run_scripts/ffn_model/03_run_retrieval.py`
 4. *Time ffn*: `run_scripts/ffn_model/04_time_ffn.py`
 
 Hyperopt FFN: `run_scripts/ffn_model/hyperopt_01_ffn.sh`  
@@ -223,7 +229,7 @@ Experiment pipeline:
 
 1. *Train models*: `run_scripts/gnn_model/01_run_gnn_train.sh`
 2. *Predict and eval*: `run_scripts/gnn_model/02_predict_gnn.py`
-3. *Retreival experiments*: `run_scripts/gnn_model/03_run_retrieval.py`
+3. *Retrieval experiments*: `run_scripts/gnn_model/03_run_retrieval.py`
 4. *Time gnn*: `run_scripts/gnn_model/04_time_gnn.py`
 
 Hyperopt GNN:  `run_scripts/gnn_model/hyperopt_01_gnn.sh`
@@ -234,7 +240,7 @@ Hyperopt GNN:  `run_scripts/gnn_model/hyperopt_01_gnn.sh`
 Experiment pipeline:     
 1. *Train models*: `run_scripts/massformer_model/01_run_massformer_train.sh`  
 2. *Predict and eval*: `run_scripts/massformer_model/02_predict_massformer.py`  
-3. *Retreival experiments*: `run_scripts/massformer_model/03_run_retrieval.py`  
+3. *Retrieval experiments*: `run_scripts/massformer_model/03_run_retrieval.py`  
 4. *Time massformer*: `run_scripts/massformer_model/04_time_massformer.py`   
 
 Hyperopt Massformer: `run_scripts/massformer_model/hyperopt_01_massformer.sh`  
@@ -247,23 +253,23 @@ We include a baseline implementation of 3DMolMS in which we utilize the same arc
 Experiment pipeline:   
 1. *Train models*: `run_scripts/molnetms/01_run_ffn_train.sh`
 2. *Predict and eval*: `run_scripts/molnetms/02_predict_ffn.py`
-3. *Retreival experiments*: `run_scripts/molnetms/03_run_retrieval.py`
+3. *Retrieval experiments*: `run_scripts/molnetms/03_run_retrieval.py`
 4. *Time 3d mol ms*: `run_scripts/molnetms/04_time_molnetms.py`
 
 Hyperopt 3DMolMS:  `run_scripts/molnetms/hyperopt_01_molnetms.sh`
 
 
-### GRAFF-MS 
+### GrAFF-MS 
 
-We include a baseline variation of GRAFF-MS in which we utilize a fixed formula vocabulary. We note we do not include collision energy or machines as covariates for consistency with our other implemented models and data processing pipelines, which may affect performance. In addition, because our data does not contain isotopic or varied adduct formula labels, we replace the marginal peak loss with a cosine similarity loss. Pleases see the [original paper](https://arxiv.org/abs/2301.11419) to better understand the release details.
+We include a baseline variation of GrAFF-MS in which we utilize a fixed formula vocabulary. We note we do not include collision energy or machines as covariates for consistency with our other implemented models and data processing pipelines, which may affect performance. In addition, because our data does not contain isotopic or varied adduct formula labels, we replace the marginal peak loss with a cosine similarity loss. Pleases see the [original paper](https://arxiv.org/abs/2301.11419) to better understand the release details.
 
 Experiment pipeline:   
 1. *Train models*: `run_scripts/graff_ms/01_run_ffn_train.sh`
 2. *Predict and eval*: `run_scripts/graff_ms/02_predict_ffn.py`
-3. *Retreival experiments*: `run_scripts/graff_ms/03_run_retrieval.py`
+3. *Retrieval experiments*: `run_scripts/graff_ms/03_run_retrieval.py`
 4. *Time graff MS*: `run_scripts/graff_ms/04_time_graff_ms.py`
 
-Hyperopt graff ms:  `run_scripts/graff_ms/hyperopt_01_graff_ms.sh`
+Hyperopt GrAFF-MS:  `run_scripts/graff_ms/hyperopt_01_graff_ms.sh`
 
 
 ### CFM-ID
@@ -323,7 +329,7 @@ One use case for forward spectrum prediction models is to use the trained model 
 
 We ask any user of this repository to cite the following works based upon the portion of the repository used.
 
-SCARF model:
+🧣SCARF model:
 ```
 @article{goldman2023prefix,
   title={Prefix-tree decoding for predicting mass spectra from molecules},
@@ -335,7 +341,7 @@ SCARF model:
 }
 ```
 
-ICEBERG model:
+🧊ICEBERG model:
 ```
 @article{goldman2024generating,
   title={Generating molecular fragmentation graphs with autoregressive neural networks},
@@ -349,7 +355,7 @@ ICEBERG model:
 }
 ```
 
-MARASON model:
+🏃‍MARASON model:
 ```
 @article{wang2025neural,
   title={Neural Graph Matching Improves Retrieval Augmented Generation in Molecular Machine Learning},
