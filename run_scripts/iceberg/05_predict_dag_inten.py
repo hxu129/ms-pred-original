@@ -22,7 +22,7 @@ for test_entry in test_entries:
 
     base_formula_folder = Path(f"results/dag_{dataset}")
     res_folder = Path(f"results/dag_inten_{dataset}/")
-    model = res_folder / folder / "version_0/best.ckpt"
+    model = res_folder / folder / "version_1/best.ckpt"  # if no contrastive finetuning, change version_1 to version_0
 
     if not model.exists(): 
         continue

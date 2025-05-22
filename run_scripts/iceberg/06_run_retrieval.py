@@ -55,6 +55,7 @@ for test_entry in test_entries:
     maxk = test_entry['max_k']
     inten_dir = Path(f"results/dag_inten_{dataset}")
     inten_model = inten_dir / train_split / "version_1/best.ckpt"  # contrastive learning model is version 1
+                                                                   # if no contrastive finetuning, change version_1 to version_0
     if not inten_model.exists():
         print(f"Could not find model {inten_model}; skipping\n: {json.dumps(test_entry, indent=1)}")
         continue
