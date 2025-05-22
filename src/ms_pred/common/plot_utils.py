@@ -24,6 +24,7 @@ method_colors = {
     "FraGNNet": "#7C9D97",
     "ICEBERG (Goldman'24)": "#A7B7C3",
     "ICEBERG (Ours)": "#7B94CC",
+    "MetFrag": "#818181",
 }
 
 # List all marker symbols in list in commnet
@@ -158,6 +159,9 @@ def set_size(w, h, ax=None):
 
 def plot_compare_ms(spec1, spec2, spec1_name='', spec2_name='', ce_label='', dpi=300, ppm=20, ax=None, largest_mz=None,
                     matched_color='#7C9D97', spec1_color='#58595B', spec2_color='#58595B'):
+    """
+    spec1 and spec2 are 2d arrays [(mz1, inten1), (mz2, inten2), ...]
+    """
     if ax is None:
         fig = plt.figure(figsize=(6, 4), dpi=dpi)
         ax = plt.gca()
@@ -168,7 +172,7 @@ def plot_compare_ms(spec1, spec2, spec1_name='', spec2_name='', ce_label='', dpi
     for idx, spec in enumerate((spec1, spec2)):
         spec = np.array(spec).astype(np.float64)
         spec[:, 1] = spec[:, 1] / spec[:, 1].max()
-        spec = spec[spec[:, 1] > 0.01]
+        spec = spec[spec[:, 1] > 0.01]  # remove low intensity peaks
         largest_mz = max(largest_mz, spec[:, 0].max())
         intensity_arr = spec[:, 1] if idx == 0 else -spec[:, 1]
         for mz, inten in zip(spec[:, 0], intensity_arr):
@@ -207,6 +211,9 @@ def plot_compare_ms(spec1, spec2, spec1_name='', spec2_name='', ce_label='', dpi
 
 
 def plot_ms(spec, spec_name='', ce_label='', dpi=300, ax=None, largest_mz=None):
+    """
+    spec is a 2d array [(mz1, inten1), (mz2, inten2), ...]
+    """
     if ax is None:
         fig = plt.figure(figsize=(6, 2), dpi=dpi)
         ax = plt.gca()
