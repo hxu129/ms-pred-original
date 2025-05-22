@@ -295,13 +295,11 @@ def load_real_spec(
         meta = {}
     elif real_spec_type == 'ms':
         real_spec_path = Path(real_spec)
-        meta, specs = common.parse_spectra(real_spec_path)
-        real_spec = common.process_spec_file(meta, specs, merge_specs=False)
+        meta, real_spec = common.parse_spectra(real_spec_path)
     elif real_spec_type == 'nist':
         nist_h5 = common.HDF5Dataset(nist_path)
         real_spec = nist_h5.read_str(f"{real_spec}.ms").split("\n")
-        meta, specs = common.parse_spectra(real_spec)
-        real_spec = common.process_spec_file(meta, specs, merge_specs=False)
+        meta, real_spec = common.parse_spectra(real_spec)
     else:
         raise ValueError(f'Unkown spectrum type {real_spec_type}')
 
@@ -315,16 +313,18 @@ def load_real_spec(
             precursor_mass = float(meta['parentmass'])
     assert precursor_mass is not None
 
+    # denoise spectrum (thresholding)
+    if denoise_spectrum:
+        real_spec = [(k, common.max_inten_spec(v, max_num_inten=20, inten_thresh=intensity_threshold)) for k, v in real_spec]
+        real_spec = [(k, common.electronic_denoising(v)) for k, v in real_spec]
+
+    real_spec = common.process_spec_file(meta, real_spec, merge_specs=False)
+
     # round collision energy to integer
     real_spec = {float(common.get_collision_energy(k)): v for k, v in real_spec.items()}
     if nce:
         real_spec = {common.nce_to_ev(k, precursor_mass): v for k, v in real_spec.items()}
     real_spec = {f'{float(k):.0f}': v for k, v in real_spec.items()}
-
-    # denoise spectrum (thresholding)
-    if denoise_spectrum:
-        real_spec = {k: common.max_inten_spec(v, inten_thresh=intensity_threshold) for k, v in real_spec.items()}
-        real_spec = {k: common.electronic_denoising(v) for k, v in real_spec.items()}
 
     return real_spec
 
