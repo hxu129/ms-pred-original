@@ -24,13 +24,12 @@ Contributors: Sam Goldman, Runzhong Wang, Rui-Xi Wang, Mrunali Manjrekar, John B
 
 
 1. [Install](#setup)  
-2. [Quickstart](#quickstart)  
-3. [Data](#data)  
-4. [Experiments](#experiments)    
-5. [Analysis](#analysis)    
-6. [Structural elucidation](#elucidation)    
-7. [Augmentation](#augmentation)    
-8. [Citation](#citation)    
+2. [Data](#data)  
+3. [Experiments](#experiments)    
+4. [Analysis](#analysis)    
+5. [Structural elucidation](#elucidation)    
+6. [Augmentation](#augmentation)    
+7. [Citation](#citation)    
 
 
 ## Install & setup <a name="setup"></a>
@@ -45,38 +44,27 @@ python3 setup.py develop
 ```
 Note: if you are not using GPU, please comment the CUDA-based packages in ``envorinment.yaml``.
 
-
-## Quickstart <a name="quickstart"></a>
-
-To make predictions, we have released and made public a version of SCARF and ICEBERG both trained upon the CANOPUS dataset (renamed NPLIB1 for clarity in corresponding manuscripts). This can be downloaded and used to predict a set of 100 sample molecules contained in the NIST library, as included at `data/spec_datasets/sample_labels.tsv` (test set):
-
- 
-```
-# Scarf quickstart
-. quickstart/scarf/download_model.sh
-. quickstart/scarf/run_model.sh
-
-# Iceberg quickstart
-. quickstart/iceberg/download_model.sh
-. quickstart/iceberg/run_model.sh
-```
-
-Model outputs will be contained in `quickstart/{model}/out/`. **We note that this model may be less performant than the model trained on the commercial NIST20 Library. Download links to models trained on NIST20 models are available upon request to any users with a NIST license.**  ICEBERG assigns intensities to various fragment masses. Refer to `notebooks/scarf_demo.ipynb` and `notebooks/iceberg_demo.ipynb` for a walkthrough on how to process and interpret the output dictionary.
-
-Please note models have been updated since the original release to correct for a small error in the adduct masses for `[M-H2O+H]+` and should be re-downloaded.
-
-
 ## Data <a name="data"></a>
 
-A data subset from the GNPS database including processed dag annotations (magma\_outputs/), subformulae (subformulae/), retrieval databases (retrieval/), splits (splits/), and spectra files (spec\_files/) can be downloaded into ``data/spec_datasets/canopus_train_public``. Note CANOPUS is an earlier name of the NPLIB1 dataset, as explained in our ICEBERG paper.
+> We are retiring the support of the NPLIB1 dataset (also referred as CANOPUS sometimes) in the main branch. 
+> You can checkout to the [``iceberg_analychem_2024`` branch](https://github.com/coleygroup/ms-pred/tree/iceberg_analychem_2024)
+> with the legacy code that supports NPLIB1.
 
+``nist20`` is a commercial dataset is available for purchase through [several vendors worldwide](https://chemdata.nist.gov/dokuwiki/doku.php?id=chemdata:distributors).
+Given the scale of effort required to purchase samples, run experiments, and collect the amount of spectra,
+and that NIST’20 is the only database where all spectra have collision energy annotations, this dataset is a reasonable investment in mass spectrum-related research in the
+absence of a thorough open-source replacement. 
+
+After your purchase of NIST, export the raw data as ``.SDF``. A detailed instruction on NIST'20 could be found [here](https://github.com/Roestlab/massformer?tab=readme-ov-file#exporting-the-nist-data) 
+(select ``.SDF`` in output format). The code to process raw data could be found at ``reformat_nist_lcmsms_sdf.py`` in [this repo](https://github.com/rogerwwww/ms-data-parser).
+Once the dataset is processed, move the files to ``ms-pred/data/spec_datasets/nist20`` and make sure it looks like
 ```
-. data_scripts/download_gnps.sh
+└── nist20
+    ├── labels.tsv
+    ├── mgf_files
+    ├── spec_files.hdf5
+    └── splits
 ```
-
-For those interested in understanding the full dataset processing pipeline, we refer you to `data_scripts/`. This contains functinoalities for generating assignment DAGs (i.e., iceberg training), assigning subformulae to spectra (i.e., scarf training + evaluation), and pubchem dataset creation (i.e., for retrieval experiments). We explain some of these details below.
-
-``nist20`` is a commercial dataset. Many of the scripts and pipelines include commands to run / train models on NIST20 as well; we suggest commenting these out where applicable.
 
 
 ### SCARF Processing
@@ -85,9 +73,7 @@ Data should then be assigned to subformulae files using
 `data_scripts/forms/assign_subformulae.py`, which will preprocess the data. We
 produce two fragment versions of the molecule, `magma_subform_50` and
 `no_subform`. The former strictly labels subformula based upon smiles structure
-and the latter is permissive and allows all entries to pass. The following
-script does this for both `canopus_train_public` and `nist20` if it has been
-acquired and parsed (commercial dataset).
+and the latter is permissive and allows all entries to pass.
 
 ```
 . data_scripts/all_assign_subform.sh
@@ -115,7 +101,7 @@ To conduct retrieval experiments, libraries of smiles must be created. A PubChem
 library is converted and each chemical formula is mapped to (smiles, inchikey)
 pairs. Subsets are selected for evaluation.  Making formula subsets takes longer
 (on the order of several hours, even parallelized) as it requires converting
-each molecule in pubchem to a mol / InChi. 
+each molecule in PubChem to a mol / InChI. 
 
 ```
 
@@ -126,15 +112,12 @@ python data_scripts/pubchem/04_make_retrieval_lists.py
 
 ```
 
-Processed tables are already included inside `canopus_train_public`.
-
-
  
 ## Experiments <a name="experiments"></a>
 
 ### ICEBERG
 
-ICEBERG is our recommended model with a 40% top-1 retrieval accuracy, benchmarked with [M+H]+ adduct on the NIST'20 dataset. 
+ICEBERG is our recommended model with a 40% top-1 retrieval accuracy with [M+H]+, benchmarked on the NIST'20 dataset. 
 ICEBERG is trained in two parts: a learned fragment generator and an intensity predictor. The pipeline for training and evaluating this model can be accessed in `run_scripts/iceberg/`. 
 There is an all-in-one script ``run_scripts/iceberg/run_all.sh`` that trains the up-to-date version of ICEBERG on NIST'20 dataset described in Wang et al. (2025). 
 The archived version released with [Goldman et al. (2024)](http://arxiv.org/abs/2304.13136) is at the [``iceberg_analychem_2024`` branch](https://github.com/coleygroup/ms-pred/tree/iceberg_analychem_2024).
