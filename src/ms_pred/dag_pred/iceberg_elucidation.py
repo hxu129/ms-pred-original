@@ -293,6 +293,7 @@ def load_real_spec(
 ):
     if real_spec_type == 'raw':
         meta = {}
+        real_spec = [(k, v) for k, v in real_spec.items()]
     elif real_spec_type == 'ms':
         real_spec_path = Path(real_spec)
         meta, real_spec = common.parse_spectra(real_spec_path)
