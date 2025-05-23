@@ -134,7 +134,7 @@ def predict():
             tup_to_process = []
             num_decoys = kwargs["num_decoys"]
             if num_decoys > 0:  # decoys only
-                from foam.opt_graph_ga_fc.mutate import mutate
+                from ms_pred.dag_pred.graph_mutate import mutate
 
                 # generate 50% mutation decoys + 50% pubchem isomer decoys
                 pubchem_rate = 0.5
