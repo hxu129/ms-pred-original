@@ -136,7 +136,9 @@ def get_output_dict(
     # Filter down
     spec = common.max_inten_spec(spec, max_formulae, inten_thresh=inten_thresh)
     spec_masses, spec_intens = spec[:, 0], spec[:, 1]
-    adduct_masses = common.ion2mass[adduct_type]
+    adduct_masses = common.ion2mass[adduct_type]  # shift by adduct mass
+    e_adduct_masses = -common.ELECTRON_MASS if common.is_positive_adduct(adduct_type) \
+        else common.ELECTRON_MASS  # shift by an electron
 
     if use_all:
         output_tbl = {
@@ -180,8 +182,12 @@ def get_output_dict(
     else:
         cross_prod, masses = common.get_all_subsets(form)
     masses_with_adduct = masses + adduct_masses
+    masses_with_e_adduct = masses + e_adduct_masses
     adduct_types = np.array([adduct_type] * len(masses_with_adduct))
-    mass_diffs = np.abs(spec_masses[:, None] - masses_with_adduct[None, :])
+    mass_diffs = np.minimum(
+        np.abs(spec_masses[:, None] - masses_with_adduct[None, :]),
+        np.abs(spec_masses[:, None] - masses_with_e_adduct[None, :])
+    )
 
     formula_inds = mass_diffs.argmin(-1)
     min_mass_diff = mass_diffs[np.arange(len(mass_diffs)), formula_inds]

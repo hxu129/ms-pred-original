@@ -152,12 +152,9 @@ def denoise_spectra_dict(spec_dict, experimental=False, **kwargs):
     """
     spec_dict_new = dict()
     for ev, spec in spec_dict.items():
-        if experimental: print(spec.shape)
         spec = denoise_spectrum(spec)
-        if experimental: print(spec.shape)
         if experimental:
             spec = denoise_spectrum_kong(spec, **kwargs)
-            print("final", spec.shape)
 
         spec_dict_new[ev] = spec
 

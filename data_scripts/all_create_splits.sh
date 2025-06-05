@@ -1,4 +1,4 @@
-dataset=nist23  # nist20, nist23
+dataset=nist20  # nist20
 
 python data_scripts/make_splits.py --data-dir data/spec_datasets/$dataset --label-file data/spec_datasets/$dataset/labels.tsv  --seed 1 --split-type fingerprint --split-name fingerprint_1.tsv
 

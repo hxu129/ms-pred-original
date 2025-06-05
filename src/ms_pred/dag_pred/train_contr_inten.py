@@ -170,7 +170,7 @@ def train_model():
         magma_map=name_to_json,
         num_workers=num_workers,
         num_decoys=num_decoys,
-        decoy_path=decoy_path,
+        decoy_path_pattern=decoy_path,
     )
     val_dataset = dag_data.IntenContrDataset(
         val_df,
@@ -179,7 +179,7 @@ def train_model():
         magma_map=name_to_json,
         num_workers=num_workers,
         num_decoys=num_decoys,
-        decoy_path=decoy_path,
+        decoy_path_pattern=decoy_path,
     )
     test_dataset = dag_data.IntenContrDataset(
         test_df,
@@ -188,7 +188,7 @@ def train_model():
         magma_map=name_to_json,
         num_workers=num_workers,
         num_decoys=num_decoys,
-        decoy_path=decoy_path,
+        decoy_path_pattern=decoy_path,
     )
 
     persistent_workers = kwargs["num_workers"] > 0

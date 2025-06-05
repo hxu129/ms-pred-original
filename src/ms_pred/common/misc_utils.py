@@ -732,7 +732,7 @@ def batches(it, chunk_size: int):
 
 def batches_num_chunks(it, num_chunks: int):
     """Consume an iterable in batches of size chunk_size""" ""
-    chunk_size = len(it) // num_chunks
+    chunk_size = len(it) // num_chunks + 1
     return batches(it, chunk_size)
 
 
@@ -753,6 +753,11 @@ def build_mgf_str(
     for meta, spec in tqdm(meta_spec_list):
         str_rows = ["BEGIN IONS"]
 
+        for k in ["TITLE", "SEQ"]:
+            if k in meta:
+                str_rows.append(f"{k}={meta[k]}")
+                meta.pop(k)
+
         # Try to add precusor mass
         for i in parent_mass_keys:
             if i in meta:
@@ -761,7 +766,8 @@ def build_mgf_str(
                 break
 
         for k, v in meta.items():
-            str_rows.append(f"{k.upper().replace(' ', '_')}={v}")
+            if k not in parent_mass_keys:
+                str_rows.append(f"{k.upper().replace(' ', '_')}={v}")
 
         if merge_charges:
             spec_ar = np.vstack([i[1] for i in spec])

@@ -441,7 +441,7 @@ class DAGDataset(Dataset):
         self.num_workers = num_workers
         self.magma_h5 = magma_h5
         self.magma_map = magma_map
-        valid_spec_ids = set([self.rm_collision(i) for i in self.magma_map])
+        valid_spec_ids = set([common.rm_collision_str(i) for i in self.magma_map])
 
         valid_specs = [(i in valid_spec_ids and inst in common.instrument2onehot_pos) for i, inst in self.df[["spec", "instrument"]].values]
         self.df_sub = self.df[valid_specs]
@@ -453,7 +453,7 @@ class DAGDataset(Dataset):
             self.spec_names = []
             self.name_to_dict = {}
             for i in self.magma_map:
-                ori_id = self.rm_collision(i)
+                ori_id = common.rm_collision_str(i)
                 if ori_id in ori_label_map:
                     self.spec_names.append(i)
                     self.name_to_dict[i] = copy.deepcopy(ori_label_map[ori_id])
@@ -465,7 +465,7 @@ class DAGDataset(Dataset):
 
         adduct_map = dict(self.df[["spec", "ionization"]].values)
         self.name_to_adduct = {
-            i: adduct_map[self.rm_collision(i)] for i in self.spec_names
+            i: adduct_map[common.rm_collision_str(i)] for i in self.spec_names
         }
 
         self.name_to_adducts = {
@@ -522,17 +522,6 @@ class DAGDataset(Dataset):
     def get_node_feats(self) -> int:
         """get_node_feats."""
         return self.tree_processor.get_node_feats()
-
-    @staticmethod
-    def rm_collision(key: str) -> str:
-        """remove `_collision VALUE` from the string"""
-        keys = key.split('_collision')
-        if len(keys) == 2:
-            return keys[0]
-        elif len(keys) == 1:
-            return key
-        else:
-            raise ValueError(f'Unrecognized key: {key}')
 
 
 class GenDataset(DAGDataset):
@@ -617,8 +606,8 @@ class GenDataset(DAGDataset):
         precursor_mzs = torch.FloatTensor(precursor_mzs)
 
         # Collate forms
-        form_vecs = torch.LongTensor([j for i in input_list for j in i["form_vecs"]])
-        root_vecs = torch.LongTensor([i["root_form_vec"] for i in input_list])
+        form_vecs = torch.LongTensor(np.array([j for i in input_list for j in i["form_vecs"]]))
+        root_vecs = torch.LongTensor(np.array([i["root_form_vec"] for i in input_list]))
         output = {
             "names": names,
             "root_reprs": batched_reprs,

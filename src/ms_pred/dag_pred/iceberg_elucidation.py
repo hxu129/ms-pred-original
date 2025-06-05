@@ -18,10 +18,27 @@ import pickle
 import copy
 from typing import List
 import pygmtools as pygm
+import yaml
+import socket
+from collections.abc import Iterable
 
 import ms_pred.common as common
 from ms_pred.retrieval.retrieval_benchmark import dist_bin
 from ms_pred import coster
+
+
+def load_global_config(path_to_config='configs/iceberg/iceberg_elucidation.yaml', hostname=None):
+    all_configs = yaml.safe_load(open(path_to_config, "r"))
+    if hostname is None:
+        hostname = socket.gethostname()
+    if hostname in all_configs.keys():
+        config = all_configs[hostname]
+        if 'clone' in config.keys():
+            config = all_configs[config['clone']]
+    else:
+        raise ValueError(f'Your current hostname {hostname} is not found in configuration file. Please add '
+                         f'configurations to {path_to_config}')
+    return config
 
 
 def candidates_from_pubchem(
@@ -99,6 +116,7 @@ def iceberg_prediction(
     threshold:float=0.1,
     binned_out:bool=False,
     ppm:int=20,
+    force_recompute:bool=False,
     **kwargs,
 ):
     """
@@ -114,7 +132,7 @@ def iceberg_prediction(
         python_path: (str) path to python executable
         gen_ckpt: (str) path to ICEBERG generator model (model 1) checkpoint
         inten_ckpt: (str) path to ICEBERG intensity model (model 2) checkpoint
-        cuda_devices: (int or list) CUDA visible devices
+        cuda_devices: (int or list) CUDA visible devices. If None, ICEBERG will run on CPU
         batch_size: (int, default=8)
         num_workers: (int, default=6) number of parallel workers
         sparse_k: (int, default=100) number of unique peaks predictred by model 2
@@ -122,6 +140,7 @@ def iceberg_prediction(
         threshold: (float, default=0.1) cutoff confidence for model 1
         binned_out: (bool, default=False) if True, model outputs binned spectrum; otherwise, model outputs high-precision m/z peaks
         ppm: (int, default=20) parts-per-million threshold for mass comparison
+        force_recompute: (bool, default=False) if True, will always re-run ICEBERG no matter the result has been cached
 
     Returns: path to results (a temporary path that hashes all experiment parameters),
              precursor mass
@@ -135,10 +154,12 @@ def iceberg_prediction(
     inten_ckpt = Path(inten_ckpt)
 
     # cuda devices as string
-    if isinstance(cuda_devices, list):
+    if isinstance(cuda_devices, Iterable):
         cuda_devices = ','.join([str(_) for _ in cuda_devices])
     elif isinstance(cuda_devices, int):
         cuda_devices = str(cuda_devices)
+    elif cuda_devices is None:
+        cuda_devices = ''
     assert isinstance(cuda_devices, str)
 
     if len(candidate_smiles) == 0:
@@ -164,6 +185,14 @@ def iceberg_prediction(
     else:
         instruments = instrument
 
+    # standardize collision energies
+    if not common.is_iterable(collision_energies): # single value CE
+        collision_energies = [[int(collision_energies)] for _ in adducts]
+    elif not common.is_iterable(collision_energies[0]): # one set of CEs for all, list of ints
+        collision_energies = [collision_energies for _ in adducts]
+    else: # one set of CEs for each, list of lists
+        collision_energies = collision_energies
+    assert len(collision_energies) == len(candidate_smiles)
     # remove stereo
     candidate_smiles = [common.rm_stereo(smi) for smi in candidate_smiles]
 
@@ -171,8 +200,11 @@ def iceberg_prediction(
     inchikeys = [common.inchikey_from_smiles(smi) for smi in candidate_smiles]
     _, uniq_idx = np.unique(inchikeys, return_index=True)
     candidate_smiles = np.array(candidate_smiles)[uniq_idx].tolist()
+    # candidate_smiles = [Chem.MolToSmiles(common.canonical_mol_from_inchi(common.inchi_from_smiles(smi)))
+    #                     for smi in candidate_smiles]
     adducts = np.array(adducts)[uniq_idx].tolist()
     instruments = np.array(instruments)[uniq_idx].tolist()
+    collision_energies = [collision_energies[i] for i in uniq_idx]
 
     # get formula & mass & check candidate smiles
     # precursor_mass = common.mass_from_smi(candidate_smiles[0]) + common.ion2mass[adduct]
@@ -186,17 +218,17 @@ def iceberg_prediction(
     #     #     raise ValueError(f'Formula mismatch in input molecules. Got {smi}, form={common.form_from_smi(smi)}, expected form={formula} inferred from {candidate_smiles[0]}')
 
     # handle collision energies, convert all nce to ev
-    collision_energies = [float(e) for e in collision_energies]
+    collision_energies = [[float(e) for e in ces] for ces in collision_energies]
     new_collision_energies = []
     precursor_masses = []
-    for cand_smi in candidate_smiles:
+    for cand_smi, adduct, ces in zip(candidate_smiles, adducts, collision_energies):
         precursor_mass = common.mass_from_smi(cand_smi) + common.ion2mass[adduct]
         precursor_masses.append(precursor_mass)
         if nce:
-            ce = [common.nce_to_ev(e, precursor_mass) for e in collision_energies]
+            ces = [common.nce_to_ev(e, precursor_mass) for e in ces]
         else:
-            ce = collision_energies
-        new_collision_energies.append([f'{float(_):.0f}' for _ in sorted(ce)])
+            ces = ces
+        new_collision_energies.append([f'{float(_):.0f}' for _ in sorted(ces)])
     collision_energies = new_collision_energies
 
     # generate temp directory
@@ -215,7 +247,7 @@ def iceberg_prediction(
     #########################################
 
     # skip model call if the results are cached
-    if not (save_dir / 'iceberg_run_successful').exists():
+    if force_recompute or not (save_dir / 'iceberg_run_successful').exists():
         # write candidates to tsv
         entries = []
         for cand_smi, adduct, instrument, ce, pmz in zip(candidate_smiles, adducts, instruments, collision_energies, precursor_masses):
@@ -227,7 +259,7 @@ def iceberg_prediction(
         df.to_csv(save_dir / f'cands_df_{exp_name}.tsv', sep='\t', index=False)
 
         # run iceberg to generate in-silico spectrum
-        cmd = (f'''CUDA_VISIBLE_DEVICES={cuda_devices} {python_path} src/ms_pred/dag_pred/predict_smis.py \\
+        cmd = (f'''{python_path} src/ms_pred/dag_pred/predict_smis.py \\
                --batch-size {batch_size} \\
                --num-workers {num_workers} \\
                --dataset-labels {save_dir / f"cands_df_{exp_name}.tsv"} \\
@@ -238,8 +270,9 @@ def iceberg_prediction(
                --gen-checkpoint {gen_ckpt} \\
                --inten-checkpoint {inten_ckpt} \\
                --save-dir {save_dir} \\
-               --gpu \\
                --adduct-shift''')
+        if cuda_devices:
+            cmd = f'CUDA_VISIBLE_DEVICES={cuda_devices} ' + cmd + ' \\\n           --gpu'
         assert not binned_out, 'Elucidation not supported for binned_out=True'
         if binned_out:
             cmd += ' \\           --binned_out'
@@ -248,9 +281,9 @@ def iceberg_prediction(
         if run_result.returncode == 0:  # successful
             (save_dir / 'iceberg_run_successful').touch()
 
-    precursor_mass = np.unique(np.array(precursor_masses).round(decimals=6))
+    precursor_mass = np.unique(np.array(precursor_masses).round(decimals=6)).tolist()
     if len(precursor_mass) == 1:
-        precursor_mass = precursor_mass.item()
+        precursor_mass = precursor_mass[0]
 
     return save_dir, precursor_mass
 
@@ -262,23 +295,26 @@ def load_real_spec(
     nce:bool=False,
     ppm:int=20,
     nist_path:str='data/spec_datasets/nist20/spec_files.hdf5',
+    denoise_spectrum:bool=True,
+    intensity_threshold:float=0.05,
+    **kwargs,
 ):
     if real_spec_type == 'raw':
         meta = {}
+        real_spec = [(k, v) for k, v in real_spec.items()]
     elif real_spec_type == 'ms':
         real_spec_path = Path(real_spec)
-        meta, specs = common.parse_spectra(real_spec_path)
-        real_spec = common.process_spec_file(meta, specs, merge_specs=False)
+        meta, real_spec = common.parse_spectra(real_spec_path)
     elif real_spec_type == 'nist':
         nist_h5 = common.HDF5Dataset(nist_path)
         real_spec = nist_h5.read_str(f"{real_spec}.ms").split("\n")
-        meta, specs = common.parse_spectra(real_spec)
-        real_spec = common.process_spec_file(meta, specs, merge_specs=False)
+        meta, real_spec = common.parse_spectra(real_spec)
     else:
         raise ValueError(f'Unkown spectrum type {real_spec_type}')
 
     if 'parentmass' in meta:
         if precursor_mass is not None:
+            precursor_mass = common.merge_mz(precursor_mass, ppm)
             # check if meta is matched
             if np.abs(precursor_mass - float(meta['parentmass'])) > precursor_mass * ppm * 1e-6:
                 raise ValueError(f'Precursor mass is different from loaded spectrum metadata! Got m/z={precursor_mass}, loaded from spec={meta["parentmass"]}')
@@ -286,13 +322,19 @@ def load_real_spec(
             precursor_mass = float(meta['parentmass'])
     assert precursor_mass is not None
 
+    # denoise spectrum (thresholding)
+    if denoise_spectrum:
+        real_spec = [(k, common.max_inten_spec(v, max_num_inten=20, inten_thresh=intensity_threshold)) for k, v in real_spec]
+        real_spec = [(k, common.electronic_denoising(v)) for k, v in real_spec]
+
+    real_spec = common.process_spec_file(meta, real_spec, merge_specs=False)
+
     # round collision energy to integer
     real_spec = {float(common.get_collision_energy(k)): v for k, v in real_spec.items()}
     print(real_spec.keys())
     if nce:
         real_spec = {common.nce_to_ev(k, precursor_mass): v for k, v in real_spec.items()}
     real_spec = {f'{float(k):.0f}': v for k, v in real_spec.items()}
-    
     return real_spec
 
 
@@ -351,6 +393,7 @@ def load_pred_spec(
                     merged_frag.append(tup[2])
                 merged_spec = np.array(merged_spec)
                 merged_spec[:, 1] = merged_spec[:, 1] / merged_spec[:, 1].max()
+                spec_dict, frag_dict = {}, {}
                 spec_dict['nan'] = merged_spec  # 'nan' means merged
                 frag_dict['nan'] = np.array(merged_frag)
 
@@ -407,7 +450,8 @@ def elucidation_over_candidates(
         ]
 
     """
-    assert isinstance(precursor_mass, float)
+    # hack the precursor mz if there are multiple formulae within tolerance
+    precursor_mass = common.merge_mz(precursor_mass, ppm)
 
     real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm, nist_path)
     smiles, pred_specs, pred_frags = load_pred_spec(load_dir, step_collision_energy)
@@ -479,6 +523,8 @@ def explain_peaks(
     precursor_mass:float,
     mol_str:str,
     real_spec_type:str='ms',
+    pred_label='Predicted',
+    real_label='Experimental',
     mol_type:str='smi',
     num_peaks:int=5,
     nce:bool=False,
@@ -486,9 +532,10 @@ def explain_peaks(
     ppm:int=20,
     save_path:str=None,
     axes:list=None,
-    nist_path:str='data/spec_datasets/nist20/spec_files.hdf5',
-    display_expmass=True,
-    
+    display_ce:bool=True,
+    display_expmass:bool=True,
+    display_mass_inten_thresh:float=0.3,
+    dpi:int=500,
     **kwargs,
 ):
     """
@@ -500,6 +547,8 @@ def explain_peaks(
         precursor_mass: (float) mass of the precursor ion
         mol_str: (str) the molecule of interest
         real_spec_type: (str, default='ms') 'ms': SIRIUS-style spectrum file (.ms), 'raw': processed dictionary
+        pred_label: (str, default='Predicted') label for the predicted spectrum
+        real_label: (str, default='Experimental') label for the experimental spectrum
         mol_type: (str, default='smi') type of mol_str. Supported values: 'smi' (SMILIES), 'inchi' (InChi), 'mol' (RDKit molecule objedt), 'inchikey' (InChiKey)
         num_peaks: (int, default=5) number of peaks to explain
         nce: (bool, default=False) if True, the collision energies are treated as normalized collision energy; otherwise, they are treated as absolute eV
@@ -507,23 +556,24 @@ def explain_peaks(
         ppm: (int, default=20) parts-per-million threshold for mass comparison
         save_path: (str) if specified, save result to the specified path
         axes: (list) matplotlib axis(es) for the plots
+        display_ce: (bool, default=True) display collision energy
+        display_expmass: (bool, default=True) display experiment mass values
+        display_mass_inten_thresh: (float, default=0.05) when the intensity is over this threshold, display the m/z value in the plot
+        dpi: (int, default=500) dpi of plots
     """
     from matplotlib.offsetbox import (OffsetImage, AnnotationBbox)
     import ms_pred.magma.fragmentation as fragmentation
-    real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm, nist_path)
     if 'step_collision_energy' in kwargs:
         merge_spec = kwargs['step_collision_energy']
-    if merge_spec:
-        real_spec = common.merge_specs(real_spec)
+
+    # hack the precursor mz if there are multiple formulae within tolerance
+    precursor_mass = common.merge_mz(precursor_mass, ppm)
+
+    # load predicted spec & get the interested prediction
     smiles, pred_specs, pred_frags = load_pred_spec(load_dir, merge_spec)
     cand_inchikeys = [common.inchikey_from_smiles(common.rm_stereo(smi)) for smi in smiles]
-    if axes is None:
-        axes = [None] * len(real_spec)
-    elif type(axes) is not list:
-        axes = [axes]
-    if not len(axes) == len(real_spec):
-        raise ValueError("shape mismatch")
 
+    # get the interested
     if mol_type == 'smi':
         inchikey_of_interest = common.inchikey_from_smiles(common.rm_stereo(mol_str, mol_type))
     elif mol_type == 'mol':
@@ -541,20 +591,41 @@ def explain_peaks(
 
     idx = cand_inchikeys.index(inchikey_of_interest)
     smi = smiles[idx]
+    pred_spec = pred_specs[idx]
+    pred_frag = pred_frags[idx]
     engine = fragmentation.FragmentEngine(smi, mol_str_type='smiles')
 
-    all_figs = []
-    print(real_spec.keys()), print(pred_specs[idx].keys())
-    for _, ce, ax in sorted(zip([float(ce) for ce in real_spec.keys()], real_spec.keys(), axes)):
-        pred_spec = pred_specs[idx][ce]
-        pred_frag = pred_frags[idx][ce]
-        common.plot_compare_ms(real_spec[ce], pred_spec, 'experiment', 'predicted',  f'collision energy {ce}eV', dpi=500, ax=ax)
+    if real_spec is None or real_spec_type == 'none':  # only plot the predicted spec
+        all_ces = list(pred_spec.keys())
+        real_spec = None
+    else:
+        real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm)
+        if merge_spec:
+            real_spec = common.merge_specs(real_spec)
+        all_ces = set(pred_spec.keys()).intersection(real_spec.keys())
 
-        plt.gca().set_ylim(-1.1, 1.1)
+    if axes is None:
+        axes = [None] * len(all_ces)
+    elif not common.is_iterable(axes):
+        axes = [axes]
+    if not len(axes) == len(all_ces):
+        raise ValueError(f"shape mismatch. Expected {len(all_ces)} axes because we have {len(all_ces)} collision "
+                         f"energies but got {len(axes)}. \n"
+                         "Predicted spec CEs: " + ",".join([f'{_}eV' for _ in pred_spec.keys()]) + "\n" +
+                         ("Experimental spec CEs: " + ",".join([f'{_}eV' for _ in real_spec.keys()]) + "\n" if real_spec else ""))
 
-        counter = 0
-        pred_spec[:, 1] = pred_spec[:, 1] / np.max(pred_spec[:, 1])
-        if display_expmass:
+    for idx, ((_, ce), ax) in enumerate(zip(sorted(zip([float(ce) for ce in all_ces], all_ces)), axes)):
+        if real_spec is None:  # plot only predicted spec
+            common.plot_ms(pred_spec[ce], pred_label,
+                           '' if np.isnan(float(ce)) or not display_ce else f'{ce} eV',
+                           dpi=dpi, ax=ax, largest_mz=precursor_mass)
+        else:  # plot two specs head-to-head
+            common.plot_compare_ms(pred_spec[ce], real_spec[ce], pred_label, real_label,
+                                   '' if np.isnan(float(ce)) or not display_ce else f'{ce} eV',
+                                   dpi=dpi, ax=ax, largest_mz=precursor_mass)
+
+        # display mass of real spectrum
+        if display_expmass and real_spec is not None:
             mz_to_plot = dict()
             for mz, inten in real_spec[ce]:
                 if mz.round(2) in mz_to_plot:
@@ -563,29 +634,39 @@ def explain_peaks(
                 else:
                     mz_to_plot[mz.round(2)] = mz, inten
             for _, (mz, inten) in mz_to_plot.items():
-                plt.text(mz, inten + 0.06, f'{mz:.4f}', fontsize=4, alpha=0.7, horizontalalignment='center')
+                if inten > display_mass_inten_thresh:
+                    plt.text(mz, -inten - 0.06, f'{mz:.4f}', fontsize=4, alpha=0.7, horizontalalignment='center')
 
-        for spec, frag in zip(pred_spec, pred_frag):
+        if ax is None:
+            ax = plt.gca()
+
+        # explain predicted spectrum
+        counter = 0
+        pred_spec[ce][:, 1] = pred_spec[ce][:, 1] / np.max(pred_spec[ce][:, 1])
+        for spec, frag in sorted(zip(pred_spec[ce], pred_frag[ce]), key=lambda x: x[0][1], reverse=True): # sort by inten
+            if counter >= num_peaks:
+                break
             mz, inten = spec
+            mol_offset = (mz, inten + 0.05)
+            text_offset = (mz, inten + 0.2)
             draw_dict = engine.get_draw_dict(frag)
             common.plot_mol_as_vector(
                 draw_dict["mol"], hatoms=draw_dict["hatoms"], hbonds=draw_dict["hbonds"],
-                offset=(mz, - inten - 0.05), zoom=0.0005, ax=plt.gca()
+                offset=mol_offset, zoom=0.001, ax=ax
             )
-            plt.text(mz, - inten - 0.12, f'{mz:.4f}', fontsize=4, horizontalalignment='center')
+            plt.text(text_offset[0], text_offset[1], f'{mz:.4f}', fontsize=4, horizontalalignment='center')
             counter += 1
-            if counter >= num_peaks:
-                break
 
-        all_figs.append(plt.gcf())
+        # hide x-axis if not the last spec
+        if idx < len(all_ces) - 1:
+            ax.set_xticklabels([])
+            ax.set_xticklabels([], minor=True)
+            ax.set_xlabel("")
 
     if save_path is not None:
-        p = PdfPages(save_path)
-        for fig in all_figs:
-            fig.savefig(p, format='pdf')
-        p.close()
+        plt.savefig(save_path, format='pdf', bbox_inches='tight')
 
-    return all_figs
+    return plt.gcf()
 
 
 def modi_finder(
@@ -654,8 +735,8 @@ def modi_finder(
         raise ValueError("shape mismatch")
 
     # load experiment spectra
-    real_spec1 = load_real_spec(real_spec1, real_spec_type1, precursor_mass1, nce1, ppm, nist_path)
-    real_spec2 = load_real_spec(real_spec2, real_spec_type2, precursor_mass2, nce2, ppm, nist_path)
+    real_spec1 = load_real_spec(real_spec1, real_spec_type1, precursor_mass1, nce1, ppm, denoise_spectrum=False)
+    real_spec2 = load_real_spec(real_spec2, real_spec_type2, precursor_mass2, nce2, ppm, denoise_spectrum=False)
 
     # load predicted spectra and fragments
     smiles, pred_specs, pred_frags = load_pred_spec(load_dir, step_collision_energy)
@@ -723,6 +804,8 @@ def modi_finder(
                         cur_matched_peaks.append((mz, inten - a_inten))
                 else:
                     cur_matched_peaks.append((mz, inten))
+        if len(cur_matched_peaks) == 0:
+            raise ValueError('No peak matching found')
         interested_peaks[ce] = np.array(cur_matched_peaks)
 
     all_figs = []
@@ -742,10 +825,8 @@ def modi_finder(
                 continue
             peak_matching = np.abs(mz - mass_diff - pred_spec[ce][:, 0]) < mz * 1e-6 * ppm
             plot_count = 0
-            #covered_bitmap = 0
             peak_atom_scores = np.zeros(engine.natoms)
             for j in np.where(peak_matching)[0]:
-                #covered_bitmap = covered_bitmap | pred_frags[idx][ce][j]  # bit-wise OR
                 covered_atoms = engine.get_present_atoms(pred_frags[idx][ce][j])[0] # bitmap to indices
                 peak_atom_scores[covered_atoms] += pred_specs[idx][ce][j][1]
                 draw_dict = engine.get_draw_dict(pred_frags[idx][ce][j])
@@ -754,16 +835,20 @@ def modi_finder(
                     offset=(mz, inten + plot_count * 0.1), zoom=0.0005, ax=plt.gca()
                 )
                 plot_count += 1
-            # covered_atoms = engine.get_present_atoms(covered_bitmap)[0]
             if len(peak_atom_scores[peak_atom_scores > 0]) == 0:
                 print(f'Uncovered peak: {mz:.5f}, {inten:.2f}')
             else:
                 print(f'Covered peak: {mz:.5f}, {inten:.2f}')
-                atom_scores[peak_atom_scores > 0] += inten  # no weighting
-                # atom_scores += peak_atom_scores / np.sum(peak_atom_scores) * inten  # higher weights for structures that ICEBERG thinks more reasonable
+                # atom_scores[peak_atom_scores > 0] += inten  # no weighting
+                # *np.sum(peak_atom_scores > 0)
+                atom_scores += peak_atom_scores / np.max(peak_atom_scores) * inten
+                    # higher weights for structures that ICEBERG thinks more reasonable
             counter += 1
             if counter >= topk_peaks:
                 break
+
+        # normalize to 1
+        atom_scores = atom_scores / max(atom_scores.max(), 1e-3)
 
         all_figs.append(plt.gcf())
 
@@ -782,7 +867,7 @@ def modi_finder(
     if save_path is not None:
         p = PdfPages(save_path)
         for fig in all_figs:
-            fig.savefig(p, format='pdf')
+            fig.savefig(p, format='pdf', bbox_inches='tight')
         p.close()
 
 
@@ -796,7 +881,8 @@ def generate_buyable_report(
         topk_per_row=3,
         rows_per_page=10,
         output_name='buyable_report',
-        cs_coster=None
+        cs_coster=None,
+        ppm=20,
 ):
     """
     Generate a buyable report
@@ -812,6 +898,7 @@ def generate_buyable_report(
         rows_per_page: how many rows on each page in the report
         output_name: the name of the output file
         cs_coster: Chem-Space coster
+        ppm: (int, default=20) parts-per-million tolerance for mass comparison
     """
     if cs_coster is None:
         cs_coster = coster.ChemSpaceCoster('eFZBhgaLqwk4by3e567DhJavPvnerOX1cnmP6nkV9eMxybPvoZHQzVknSMq3z_8X')
@@ -846,6 +933,9 @@ def generate_buyable_report(
 
             # Run ICEBERG to predict spectra
             result_path, pmz = iceberg_prediction(smiles, energy, **config_dict)
+
+            # hack the precursor mz if there are multiple formulae within tolerance
+            pmz = common.merge_mz(pmz, ppm)
 
             # Compare spectrum similarity for elucidation
             topk_results = elucidation_over_candidates(result_path, exp_spec, precursor_mass=pmz, mol_name=feat_id, topk=rows_per_page, **config_dict)
@@ -887,10 +977,10 @@ def generate_buyable_report(
                 buyable_text = f'in-stock\n${cost[0]}/{cost[1]}mg, ships {cost[2]} days'
             else:
                 is_on_demand, cost = cs_coster.get_buyable_and_cost(smi, in_stock_only=False)
-                if is_on_demand:
+                if is_on_demand and cost[0] is not None:
                     buyable_text = f'on-demand\n${cost[0]}/{cost[1]}mg, ships {cost[2]} days'
                 else:
-                    buyable_text = 'not buyable'
+                    buyable_text = 'not buyable/custom synthesis'
             plt.text(pmz / 5 * 2, 0.6, buyable_text, fontsize=15)
 
             # Add smiles
@@ -903,16 +993,68 @@ def generate_buyable_report(
             pdf.savefig(fig, bbox_inches='tight')
 
 
-def form_from_mgf(
+def form_from_mgf_buddy(
+    inp_mgf: str,
+    top_k_buddy_preds: int = 5,
+    profile: str = 'orbitrap',
+    ms1_ppm: int = 5,
+    ms2_ppm: int = 10,
+    fdr_cutoff: float = 0.1,
+    halogen: bool = False,
+):
+    """
+    Calculate chemical formula from MGF file by Buddy
+
+    Args:
+        inp_mgf: path to mgf
+        top_k_buddy_preds: how many formula predictions are returned
+        fdr_cutoff: if estimated false detection rate (FDR) is lower than fdr_cutoff, only top-1 will be returned
+        profile: MS/MS profile (default: orbitrap)
+        ms1_ppm: MS1 ppm tolerance
+        ms2_ppm: MS2 ppm tolerance
+        halogen: is halogen in formula
+    """
+    from msbuddy import Msbuddy, MsbuddyConfig
+
+    msb_config = MsbuddyConfig(ms_instr=profile,  # supported: "qtof", "orbitrap", "fticr" or None
+                               ppm=True,  # use ppm for mass tolerance
+                               ms1_tol=ms1_ppm,  # MS1 tolerance in ppm or Da
+                               ms2_tol=ms2_ppm,  # MS2 tolerance in ppm or Da
+                               halogen=halogen)
+    msb_engine = Msbuddy(msb_config)
+    msb_engine.load_mgf(inp_mgf)
+    msb_engine.annotate_formula()
+    all_results = msb_engine.get_summary()
+    feature_id_to_form = {}
+    for result in all_results:
+        adduct_and_form = []
+        adduct = result['adduct']
+        if adduct not in common.ion2mass:
+            continue  # skip adduct types that are not supported by ICEBERG
+        if result['estimated_fdr'] is not None and fdr_cutoff < result['estimated_fdr']:
+            adduct_and_form.append(dict(rnk=1, adduct=adduct, form=result['formula_rank_1']))
+        else:
+            for i in range(1, top_k_buddy_preds+1):
+                if f'formula_rank_{i}' in result and result[f'formula_rank_{i}'] is not None:
+                    adduct_and_form.append(dict(rnk=i, adduct=adduct, form=result[f'formula_rank_{i}']))
+        if len(adduct_and_form) > 0:
+            feature_id_to_form[result['identifier']] = adduct_and_form
+    return feature_id_to_form
+
+
+def form_from_mgf_sirius(
     inp_mgf: str,
     top_k_sirius_preds: int = 5,
     profile: str = 'orbitrap',
     ppm: int = 10,
-    sirius_path: str = '/home/roger/miniforge3/condabin/conda run -n ms-main sirius',
+    sirius_path: str = 'sirius',
+    elements_enforced: str = '',
+    elements_considered: str = '',
+    ions_considered: str = '',
     **kwargs
 ):
     """
-    Calculate chemical formula from MGF file
+    Calculate chemical formula from MGF file by SIRIUS
 
     Args:
         inp_mgf: path to mgf
@@ -920,10 +1062,26 @@ def form_from_mgf(
         profile: MS/MS profile (default: orbitrap)
         ppm: (default: 10)
         sirius_path: path to sirius runtime (default: local )
+        elements_enforced: Enforce elements for molecular formula determination.
+            Example: CHNOPSCl to allow the elements C, H, N, O, P, S and Cl. Add numbers in brackets to restrict the
+            minimal and maximal allowed occurrence of these elements: CHNOP[5]S[8]Cl[1-2]. When one number is given
+             then it is interpreted as upper bound.
+        elements_considered: Set the allowed elements for rare element detection.
+            Example: `SBrClBSe` to allow the elements S,Br,Cl,B and Se.
+        ions_considered: the iontype/adduct of the MS/MS data.
+            Example: [M+H]+, [M-H]-, [M+Cl]-, [M+Na]+, [M]+. You can also provide a comma separated list of adducts.
+            Default: [M+H]+,[M+K]+,[M+Na]+,[M+H-H2O]+,[M+H-H4O2]+,[M+NH4]+,[M-H]-,[M+Cl]-,[M-H2O-H]-,[M+Br]-
 
     """
     sirius_config_cmd = f'--ignore-formula --noCite formula ' \
-                        f'-p {profile} --ppm-max={ppm} write-summaries'
+                        f'-p {profile} --ppm-max={ppm} '
+    if len(elements_enforced) > 0:
+        sirius_config_cmd += f'--elements-enforced={elements_enforced} '
+    if len(elements_considered) > 0:
+        sirius_config_cmd += f'--elements-considered={elements_considered} '
+    if len(ions_considered) > 0:
+        sirius_config_cmd += f'--ions-considered={ions_considered} '
+    sirius_config_cmd += 'write-summaries'
     exp_hash = common.md5(inp_mgf) + '||' + sirius_config_cmd
     out_dir = Path(user_cache_dir(f"ms-pred/sirius-out/{common.str_to_hash(exp_hash)}"))
     out_dir.mkdir(parents=True, exist_ok=True)

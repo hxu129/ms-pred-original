@@ -1,4 +1,4 @@
-dataset=msg # nist20, nist23
+dataset=nist20 # nist20, nist23, msg
 max_peaks=50
 ppm_diff=20
 workers=64

@@ -47,15 +47,15 @@ def relabel_tree(
 
     pred_tbl, true_tbl = pred_form.get("output_tbl", None), true_form["output_tbl"]
     if pred_tbl is None:
-        pred_tbl = {"formula_mass_no_adduct": []}
+        pred_tbl = {"mono_mass": []}
 
     # Use rel inten
     true_form_to_inten = dict(zip(true_tbl["formula"], true_tbl["rel_inten"]))
 
     if add_binned:
         bins = np.linspace(0, 1500, 15000)
-        true_pos = np.digitize(true_tbl["formula_mass_no_adduct"], bins)
-        pred_pos = np.digitize(pred_tbl["formula_mass_no_adduct"], bins)
+        true_pos = np.digitize(true_tbl["mono_mass"], bins)
+        pred_pos = np.digitize(pred_tbl["mono_mass"], bins)
         bin_to_inten = dict()
         for i, j in zip(true_pos, true_tbl["rel_inten"]):
             bin_to_inten[i] = max(j, bin_to_inten.get(i, 0))
@@ -64,7 +64,7 @@ def relabel_tree(
         new_intens = [true_form_to_inten.get(i, 0.0) for i in pred_tbl["formula"]]
 
     if add_raw:
-        raw_spec = list(zip(true_tbl["formula_mass_no_adduct"], true_tbl["rel_inten"]))
+        raw_spec = list(zip(true_tbl["mono_mass"], true_tbl["rel_inten"]))
         pred_tbl["raw_spec"] = raw_spec
 
     pred_tbl["rel_inten"] = new_intens
@@ -112,15 +112,19 @@ def main():
 
     # Run
     wrapper_fn = lambda arg_dict: relabel_tree(**arg_dict)
+
+    def output_fn(out_dicts):
+        h5 = common.HDF5Dataset(out_form_folder, mode='w')
+        for tup in out_dicts:
+            h5.write_str(tup[0], tup[1])
+        h5.close()
+
     # Debug
     if num_workers == 0:
         out_dicts = [wrapper_fn(i) for i in tqdm(arg_dicts)]
+        output_fn(out_dicts)
     else:
-        out_dicts = common.chunked_parallel(arg_dicts, wrapper_fn, chunks=1000, max_cpu=num_workers)
-
-    h5 = common.HDF5Dataset(out_form_folder, mode='w')
-    h5.write_list_of_tuples(out_dicts)
-    h5.close()
+        common.chunked_parallel(arg_dicts, wrapper_fn, output_func=output_fn, chunks=1000, max_cpu=num_workers)
 
 
 if __name__ == "__main__":

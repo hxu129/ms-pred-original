@@ -1,4 +1,4 @@
-dataset=nist23  # nist20, nist23
+dataset=nist20  # nist20
 ppm_diff=20
 workers=64
 

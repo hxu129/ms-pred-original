@@ -234,11 +234,7 @@ def predict():
                     sparse_k = kwargs["sparse_k"]
                     best_inds = np.argsort(output_spec[:, 1], -1)[::-1][:sparse_k]
                     output_spec = output_spec[best_inds, :]
-                    if model.inten_model_obj.include_unshifted_mz:
-                        inten_output_size = model.inten_model_obj.output_size * 2
-                    else:
-                        inten_output_size = model.inten_model_obj.output_size
-                    pred_frag = np.array(pred_frag)[best_inds // inten_output_size]
+                    pred_frag = np.array(pred_frag)[best_inds]
                     inchikey = common.inchikey_from_smiles(smi)
                     return_list.append((h5_name, spec_name, smi, inchikey, output_spec, pred_frag))
             return return_list

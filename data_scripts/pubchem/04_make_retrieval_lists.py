@@ -194,11 +194,8 @@ if __name__ == "__main__":
 
     compute_entries = [
         {"dataset": "nist20", "max_k": 50, "split": "split_1.tsv"},
-        #{"dataset": "nist20", "max_k": 50, "split": "split_1_500.tsv"},
-        #{"dataset": "nist20", "max_k": None, "split": "split_1_500.tsv"},
-        #{"dataset": "nist20", "max_k": 50, "split": "split_1_1000.tsv"},
-        #{"dataset": "nist20", "max_k": None, "split": "split_1_1000.tsv"},
-        #{"dataset": "canopus_train_public", "max_k": 50, "split": "split_1.tsv"},
+        {"dataset": "nist20", "max_k": 50, "split": "scaffold_1.tsv"},
+        # {"dataset": "canopus_train_public", "max_k": 50, "split": "split_1.tsv"},
     ]
 
     for test_entry in compute_entries:

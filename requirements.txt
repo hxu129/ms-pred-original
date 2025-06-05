@@ -7,3 +7,5 @@ omegaconf
 pubchempy
 pymoo
 h5py
+msbuddy
+lightgbm

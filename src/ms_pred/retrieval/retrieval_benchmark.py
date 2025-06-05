@@ -106,7 +106,12 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
     ## sampled_evs = np.random.choice(evs, 3, p = ())
     if selected_evs:
         true_spec_dict = {k: v for k, v in true_spec_dict.items() if str(k) in selected_evs}
-    for idx, colli_eng in enumerate(true_spec_dict.keys()):
+
+    # standardize keys to str
+    true_spec_dict = {f'{float(k):.0f}': v for k, v in true_spec_dict.items()}
+    cand_preds_dict = [{f'{float(k):.0f}': v for k, v in cand_dict.items()} for cand_dict in cand_preds_dict]
+
+    for idx, colli_eng in enumerate(true_spec_dict.keys()): # TODO: sample
         cand_preds = np.stack([i[colli_eng] for i in cand_preds_dict], axis=0)
         true_spec = true_spec_dict[colli_eng]
 
@@ -144,43 +149,13 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
 
             norm_pred = norm_peaks(pred_specs)
             norm_true = norm_peaks(true_spec)
-            zeros = (pred_specs.sum(axis=-1) == 0) # to account for empty spectra
+            zeros = (pred_specs.sum(axis=-1) == 0)
             entropy_pred = entropy(norm_pred)
             entropy_targ = entropy(norm_true)
             entropy_mix = entropy((norm_pred + norm_true) / 2)
             entropy_dists = (2 * entropy_mix - entropy_pred - entropy_targ) / np.log(4)
-            entropy_dists[zeros] = 1
+            entropy_dists[zeros] = 1 # mask empty spectra to be distance 1
             dist.append(entropy_dists)
-
-        elif func == "emd":
-            import ot
-            bins = np.linspace(0, 1500, 15000, dtype=np.float64)
-            def norm_peaks(prob):
-                return prob / (prob.sum(axis=-1, keepdims=True) + 1e-22)
-            norm_pred = norm_peaks(pred_specs)
-            norm_true = norm_peaks(true_spec)
-            emds = []
-            for i in tqdm(range(norm_pred.shape[0])):
-                # this takes 10 seconds
-                # TODO: figure out how one can incorporate the entropy weighting into matrix?
-                #emd = ot.emd2_1d(x_a=bins, x_b=bins, a = -norm_pred[i,:] * np.log(norm_pred[i,:]), 
-                #                                     b = -norm_true * np.log(norm_true), metric='sqeuclidean')
-                # takes like 10 minutes..
-                emd = ot.emd2(norm_pred[i,:], norm_true, np.abs(bins[:, None] - bins))
-                #emd = ot.sinkhorn2(norm_pred[i,: ], norm_true, np.abs(bins[:, None] - bins), reg=0)
-                # print(emd)
-                #print(np.abs(np.cumsum(norm_pred[i, :], axis=-1) - np.cumsum(norm_true)) @ np.diff(bins, append=15000))
-                emds.append(emd)
-            # closed form for 1p 1-d emd
-            # emd = np.abs(np.cumsum(norm_pred, axis=-1) - np.cumsum(norm_true)) @ np.diff(bins, append=15000)
-
-            #emd = -np.exp(-emd) # top 3? # super small values?
-            # emd = 1 - 1/emd # top 4, 0.85 to 1
-            # emd = np.log1p(emd)
-            # emd = np.tanh(emd)  # saturates everything, not good.
-            # the relative distances end up making a difference below b/c of dot product!
-            dist.append(emds)
-
 
     dist = np.array(dist)  # num of colli energy x number of candidates
     # if >=5 peaks: weight=4, elif >=1 peaks: weight=1, else: weight=0
@@ -297,6 +272,11 @@ def rank_test_entry(
 
     true_mass = common.mass_from_smi(true_smiles)
     mass_bin = common.bin_mass_results(true_mass)
+
+    if binned_pred:
+        num_peaks_avg = np.mean([np.sum(sp > 0) for sp in true_spec.values()])
+    else:
+        num_peaks_avg = np.mean([np.sum(sp[:, 1] > 0) for sp in true_spec.values()])
     peak_bin_avg = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='mean')
     peak_bin_max = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='max')
     peak_bin_min = common.bin_peak_results(true_spec, binned_spec=binned_pred, reduction='min')
@@ -306,6 +286,7 @@ def rank_test_entry(
         "total_decoys": len(resorted_ikeys),
         "mass": float(true_mass),
         "mass_bin": mass_bin,
+        "num_peaks_avg": float(num_peaks_avg),
         "peak_bin_avg": peak_bin_avg,
         "peak_bin_max": peak_bin_max,
         "peak_bin_min": peak_bin_min,
@@ -379,32 +360,6 @@ def main(args):
     pred_ikeys = np.array(pred_ikeys)
     pred_spec_names = np.array(pred_spec_names)
     pred_spec_names_unique = np.unique(pred_spec_names)
-
-    # pred_specs = pickle.load(open(pred_file, "rb"))
-    # pred_spec_ars = pred_specs["preds"]
-    # pred_ikeys = np.array(pred_specs["ikeys"])
-    # pred_spec_names = np.array(pred_specs["spec_names"])
-    # pred_spec_names_unique = np.unique(pred_spec_names)
-    # use_sparse = pred_specs["sparse_out"]
-    # if binned_pred:
-    #     upper_limit = pred_specs["upper_limit"]
-    #     num_bins = pred_specs["num_bins"]
-
-    # if args.merged_specs:  # only keep collision_energy == nan
-    #     for spec_name in name_to_colli.keys():  # filter true spec
-    #         colli_engs = ast.literal_eval(name_to_colli[spec_name])
-    #         new_colli_engs = []
-    #         for colli_key in colli_engs:
-    #             if 'nan' in colli_key:
-    #                 new_colli_engs.append(colli_key)
-    #         if len(new_colli_engs) == 0:
-    #             new_colli_engs.append('nan')
-    #         name_to_colli[spec_name] = new_colli_engs
-    #
-    #     for idx in range(len(pred_spec_ars)):  # filter predicted spec
-    #         pred_spec_ars[idx] = {k: v for k, v in pred_spec_ars[idx].items() if 'nan' in k}
-    #
-    # else:
 
     # only keep collision_energy != nan
     for spec_name in name_to_colli.keys():  # filter true spec

@@ -4,9 +4,9 @@ import json
 
 
 pred_file = "src/ms_pred/massformer_pred/predict.py"
-retrieve_file = "src/ms_pred/retrieval/retrieval_binned.py"
+retrieve_file = "src/ms_pred/retrieval/retrieval_benchmark.py"
 subform_name = "no_subform"
-devices = ",".join(["2"])
+devices = ",".join(["0"])
 dist = "cos"
 num_workers = 32
 
@@ -16,23 +16,38 @@ test_entries = [
      "test_split": "split_1",
      "max_k": 50},
 
-    {"dataset": "canopus_train_public",
-     "train_split": "split_1_rnd1",
-     "test_split": "split_1",
-     "max_k": 50},
-
     {"dataset": "nist20",
-     "train_split": "split_1_rnd2",
-     "test_split": "split_1",
-     "max_k": 50},
-
-    {"dataset": "canopus_train_public",
      "train_split": "split_1_rnd2",
      "test_split": "split_1",
      "max_k": 50},
 
     {"dataset": "nist20",
      "train_split": "split_1_rnd3",
+     "test_split": "split_1",
+     "max_k": 50},
+
+    {"dataset": "nist20",
+     "train_split": "scaffold_1_rnd1",
+     "test_split": "scaffold_1",
+     "max_k": 50},
+
+    {"dataset": "nist20",
+     "train_split": "scaffold_1_rnd2",
+     "test_split": "scaffold_1",
+     "max_k": 50},
+
+    {"dataset": "nist20",
+     "train_split": "scaffold_1_rnd3",
+     "test_split": "scaffold_1",
+     "max_k": 50},
+
+    {"dataset": "canopus_train_public",
+     "train_split": "split_1_rnd1",
+     "test_split": "split_1",
+     "max_k": 50},
+
+    {"dataset": "canopus_train_public",
+     "train_split": "split_1_rnd2",
      "test_split": "split_1",
      "max_k": 50},
 
@@ -63,6 +78,7 @@ for test_entry in test_entries:
 
     cmd = f"""python {pred_file} \\
     --batch-size 32  \\
+    --num-workers 16 \\
     --dataset-name {dataset} \\
     --sparse-out \\
     --sparse-k 100 \\
@@ -79,9 +95,10 @@ for test_entry in test_entries:
     # Run retrieval
     cmd = f"""python {retrieve_file} \\
     --dataset {dataset} \\
-    --formula-dir-name {subform_name} \\
-    --binned-pred-file {save_dir / 'binned_preds.p'} \\
+    --formula-dir-name {subform_name}.hdf5 \\
+    --pred-file {save_dir / 'binned_preds.hdf5'} \\
     --dist-fn cos \\
+    --binned-pred \\
         """
 
     print(cmd + "\n")

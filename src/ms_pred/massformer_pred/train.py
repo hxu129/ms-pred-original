@@ -55,6 +55,7 @@ def add_massformer_train_args(parser):
 
     # embed adduct
     parser.add_argument("--embed-adduct", default=False, action="store_true")
+    parser.add_argument("--embed-collision-energy", default=False, action="store_true")
     parser.add_argument("--use-reverse", default=False, action="store_true")
 
     parser.add_argument("--mf-num-ff-num-layers", type=int)
@@ -120,7 +121,7 @@ def train_model():
         train_df,
         data_dir=data_dir,
         num_bins=num_bins,
-        # num_workers=num_workers,
+        num_workers=num_workers,
         upper_limit=upper_limit,
         form_dir_name=kwargs["form_dir_name"],
     )
@@ -128,7 +129,7 @@ def train_model():
         val_df,
         data_dir=data_dir,
         num_bins=num_bins,
-        # num_workers=num_workers,
+        num_workers=num_workers,
         upper_limit=upper_limit,
         form_dir_name=kwargs["form_dir_name"],
     )
@@ -136,7 +137,7 @@ def train_model():
         test_df,
         data_dir=data_dir,
         num_bins=num_bins,
-        # num_workers=num_workers,
+        num_workers=num_workers,
         upper_limit=upper_limit,
         form_dir_name=kwargs["form_dir_name"],
     )
@@ -175,6 +176,7 @@ def train_model():
         mf_dropout=kwargs["mf_dropout"],
         use_reverse=kwargs["use_reverse"],
         embed_adduct=kwargs["embed_adduct"],
+        embed_collision_energy=kwargs["embed_collision_energy"],
         gf_model_name=kwargs["gf_model_name"],
         gf_pretrain_name=kwargs["gf_pretrain_name"],
         gf_fix_num_pt_layers=kwargs["gf_fix_num_pt_layers"],
