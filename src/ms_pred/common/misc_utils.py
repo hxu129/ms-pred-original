@@ -753,6 +753,11 @@ def build_mgf_str(
     for meta, spec in tqdm(meta_spec_list):
         str_rows = ["BEGIN IONS"]
 
+        for k in ["TITLE", "SEQ"]:
+            if k in meta:
+                str_rows.append(f"{k}={meta[k]}")
+                meta.pop(k)
+
         # Try to add precusor mass
         for i in parent_mass_keys:
             if i in meta:
