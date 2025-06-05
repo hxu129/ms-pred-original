@@ -168,11 +168,11 @@ class JointModel(pl.LightningModule):
 
         assert adduct_shift, 'adduct shift must be enforced'
 
-        adducts = safe_device(batch["adducts"]).to(device)
-        collision_engs = safe_device(batch["collision_engs"]).to(device)
+        adducts = safe_device(batch["adducts"])
+        collision_engs = safe_device(batch["collision_engs"])
         if self.inten_model_obj.embed_instrument:
-            instruments = safe_device(batch["instruments"]).to(device)
-        precursor_mzs = safe_device(batch["precursor_mzs"]).to(device)
+            instruments = safe_device(batch["instruments"])
+        precursor_mzs = safe_device(batch["precursor_mzs"])
         root_forms = safe_device(batch["root_form_vecs"])
         frag_forms = safe_device(batch["frag_form_vecs"])
 

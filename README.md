@@ -37,12 +37,21 @@ Contributors: Sam Goldman, John Bradshaw, Janet Li, Jiayi Xin, Connor W. Coley
 Install and set up the conda environment using [mamba](https://mamba.readthedocs.io/en/latest/):
 
 ```
+## WIP fixing 3.13.2025:
+mamba env create -f environment.yml
+mamba activate ms-gen_cuda-12
+# for cuda 12: use pytorch=2.4.0, cuda=12.1
+pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 https://download.pytorch.org/whl/cu121
+pip install torch_geometric 
+pip install pytorch_lightning
+pip install -r requirements.txt
+pip install dgl -f https://data.dgl.ai/wheels/torch-2.4/cu121/repo.html
 mamba env create -f environment.yml
 mamba activate ms-gen
 pip install -r requirements.txt
 python3 setup.py develop
 ```
-Note: if you are using GPU, please uncomment the CUDA-based packages for DGL and comment the CPU package in ``envorinment.yaml``.
+Note: if you are using GPU, please uncomment the CUDA-based packages for DGL and comment the CPU package in ``environment.yaml``.
 
 
 ## Quickstart <a name="quickstart"></a>

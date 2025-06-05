@@ -144,10 +144,13 @@ def dist_bin(cand_preds_dict: List[Dict], true_spec_dict: dict, sparse=True, ign
 
             norm_pred = norm_peaks(pred_specs)
             norm_true = norm_peaks(true_spec)
+            zeros = (pred_specs.sum(axis=-1) == 0) # to account for empty spectra
             entropy_pred = entropy(norm_pred)
             entropy_targ = entropy(norm_true)
             entropy_mix = entropy((norm_pred + norm_true) / 2)
-            dist.append((2 * entropy_mix - entropy_pred - entropy_targ) / np.log(4))
+            entropy_dists = (2 * entropy_mix - entropy_pred - entropy_targ) / np.log(4)
+            entropy_dists[zeros] = 1
+            dist.append(entropy_dists)
 
         elif func == "emd":
             import ot
