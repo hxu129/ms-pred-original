@@ -1,12 +1,12 @@
-name: ms-gen_cuda-12
+name: ms-gen-cu121
 channels:
 - pytorch
-- dglteam
+- dglteam/label/th24_cu121
 - conda-forge
 - pyg
 - bioconda
 dependencies:
-- python=3.9.*
+- python=3.10.*
 - cython
 - ray-tune
 - matplotlib=3.4.*
@@ -14,9 +14,9 @@ dependencies:
 - conda-forge::python-graphviz
 - conda-forge::pygraphviz
 - pip=21.2.*
-- ipykernel=6.0.*
+- ipykernel
 - einops
 - nb_conda_kernels=2.3.*
 - seaborn=0.11.*
 - MKL=2024.0.0
- 
+- dgl
