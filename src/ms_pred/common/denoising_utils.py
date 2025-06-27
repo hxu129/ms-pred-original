@@ -163,7 +163,8 @@ def denoise_spectra_dict(spec_dict, experimental=False, **kwargs):
 
 
 def denoise_spectrum_kong(spec, smiles, adduct, precursor_mz):
-    spec = sd.spectral_denoising(spec, smiles, adduct)
+    if smiles: 
+        spec = sd.spectral_denoising(spec, smiles, adduct)
     # clean up peak around precursor m/z... using +=2 for now but can change. 
     spec = spec[(np.abs(spec[:, 0] - precursor_mz) > 2) | (np.abs(spec[:, 0] - precursor_mz) < 0.02)] 
     return spec
