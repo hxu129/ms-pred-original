@@ -275,7 +275,7 @@ def iceberg_prediction(
                --save-dir {save_dir} \\
                --adduct-shift''')
         if cuda_devices:
-            cmd = f'CUDA_VISIBLE_DEVICES={cuda_devices} ' + cmd + ' \\\n           --gpu'
+            cmd = f'CUDA_VISIBLE_DEVICES={cuda_devices} ' + cmd + ' \\\n               --gpu'
         assert not binned_out, 'Elucidation not supported for binned_out=True'
         if binned_out:
             cmd += ' \\           --binned_out'
