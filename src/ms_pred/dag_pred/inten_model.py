@@ -749,13 +749,14 @@ class IntenGNN(pl.LightningModule):
 
         if name == 'train':
             loss_fn = self.loss_fn
+            decoy_loss_fn = self.entropy_loss
             if self.track_cosine:
                 cosine_fn = self._cosine_fn
         else:
-            loss_fn = functools.partial(self.loss_fn, use_hun=False)  # use hungarian in val and test
-            # TODO: is the hungarian matching correct?
+            loss_fn = functools.partial(self.loss_fn, use_hun=True)  # use hungarian in val and test
+            decoy_loss_fn = functools.partial(self.entropy_loss, use_hun=True)
             if self.track_cosine:
-                cosine_fn = functools.partial(self._cosine_fn, use_hun=False) # use hungarian in val and test
+                cosine_fn = functools.partial(self._cosine_fn, use_hun=True) # use hungarian in val and test
 
         if 'is_decoy' in batch and 'mol_num' in batch:  # data with decoys
             true_data_inds = batch["is_decoy"] == 0
@@ -767,7 +768,7 @@ class IntenGNN(pl.LightningModule):
             )['loss']
 
             # contrastive ranking loss cosine loss to decoys
-            decoy_spec_loss = loss_fn(pred_inten,
+            decoy_spec_loss = decoy_loss_fn(pred_inten,
                                       batch["inten_targs"][true_data_inds].repeat_interleave(batch['mol_num'], dim=0),
                                       parent_mass=batch["precursor_mzs"]
                                       )['loss']

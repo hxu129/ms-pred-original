@@ -107,7 +107,6 @@ class HDF5Dataset:
     def flush(self):
         self.h5_obj.flush()
 
-
 def setup_logger(save_dir, log_name="output.log", debug=False, custom_label=""):
     """Create output directory"""
     save_dir = Path(save_dir)
@@ -838,7 +837,6 @@ def md5(fname, chunk_size=4096):
 def str_to_hash(inp_str, digest_size=16):
     return hashlib.blake2b(inp_str.encode("ascii"), digest_size=digest_size).hexdigest()
 
-
 def rm_collision_str(key: str) -> str:
     """remove `_collision VALUE` from the string"""
     keys = key.split('_collision')
@@ -848,7 +846,6 @@ def rm_collision_str(key: str) -> str:
         return key
     else:
         raise ValueError(f'Unrecognized key: {key}')
-
 
 def is_iterable(obj):
     try:
