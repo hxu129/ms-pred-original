@@ -180,7 +180,7 @@ def iceberg_prediction(
                                  f'{list(common.ion2mass.keys())}')
     assert len(adducts) == len(candidate_smiles)
 
-    if isinstance(instrument, str):
+    if isinstance(instrument, str) or instrument is None:
         instruments = [instrument] * len(candidate_smiles)
     else:
         instruments = instrument
@@ -261,7 +261,7 @@ def iceberg_prediction(
         # run iceberg to generate in-silico spectrum
         cmd = (f'''{python_path} src/ms_pred/dag_pred/predict_smis.py \\
                --batch-size {batch_size} \\
-               --num-workers {num_workers} \\
+               --num-gpu-workers {num_workers} \\
                --dataset-labels {save_dir / f"cands_df_{exp_name}.tsv"} \\
                --sparse-out \\
                --sparse-k {sparse_k} \\
@@ -295,7 +295,7 @@ def load_real_spec(
     nce:bool=False,
     ppm:int=20,
     nist_path:str='data/spec_datasets/nist20/spec_files.hdf5',
-    denoise_spectrum:bool=True,
+    denoise_spectrum:bool=False,
     intensity_threshold:float=0.05,
     **kwargs,
 ):
@@ -324,12 +324,14 @@ def load_real_spec(
 
     # denoise spectrum (thresholding)
     if denoise_spectrum:
-        real_spec = [(k, common.max_inten_spec(v, max_num_inten=20, inten_thresh=intensity_threshold)) for k, v in real_spec]
-        real_spec = [(k, common.electronic_denoising(v)) for k, v in real_spec]
-
+        # real_spec = [(k, common.max_inten_spec(v, max_num_inten=20, inten_thresh=intensity_threshold)) for k, v in real_spec]
+        # real_spec = [(k, common.combined_electronic_denoising(v)) for k, v in real_spec]
+        real_spec = list(common.denoise_spectra_dict(dict(real_spec)).items())
+        # pass
+        
     real_spec = common.process_spec_file(meta, real_spec, merge_specs=False)
-
     # round collision energy to integer
+    
     real_spec = {float(common.get_collision_energy(k)): v for k, v in real_spec.items()}
     print(real_spec.keys())
     if nce:
@@ -342,6 +344,7 @@ def load_pred_spec(
     load_dir:str,
     merge_spec:bool,
     merge_method='sum',
+    denoise_spectrum=False,
 ):
     """
     Args:
@@ -352,8 +355,10 @@ def load_pred_spec(
 
     """
     load_dir = Path(load_dir)
-
-    pred_specs = common.HDF5Dataset(load_dir / 'preds.hdf5')
+    if load_dir.endswith('.hdf5'):
+        preds_specs = common.HDF5Dataset(load_dir)
+    else:
+        preds_specs = common.HDF5Dataset(load_dir / 'preds.hdf5')
     pred_spec_ars = []
     pred_smis = []
     pred_frags = []
@@ -369,6 +374,11 @@ def load_pred_spec(
                 collision_eng_key = common.get_collision_energy(collision_eng_key)
                 spec_dict[collision_eng_key] = collision_eng_obj['spec'][:]
                 frag_dict[collision_eng_key] = json.loads(collision_eng_obj['frag'][0])
+
+            if denoise_spectrum:
+                # spec_dict = common.denoise_spectra_dict(spec_dict)
+                spec = [(k, common.max_inten_spec(v, max_num_inten=20, inten_thresh=0.05)) for k, v in spec_dict.items()]
+                spec_dict = dict([(k, common.combined_electronic_denoising(v)) for k, v in spec])
 
             if merge_spec:
                 mz_frag_to_tup = {}
@@ -487,6 +497,92 @@ def elucidation_over_candidates(
         if idx >= topk and found_true:
             break
     return [(smiles[i], dist[i], i == true_idx) for i in sorted_indices[:topk]]
+
+def elucidation_over_energies(
+    load_dir,
+    real_spec,
+    precursor_mass,
+    real_smiles,
+    real_spec_type='ms',
+    mol_name='',
+    nce=False,
+    num_bins=2000,
+    ppm=20,
+    step_collision_energy=False,
+    ignore_precursor=True,
+    dist_func='entropy',
+    topk=5,
+    nist_path=None,
+    **kwargs
+):
+    """
+    Similar to elucidation_over_candidates, but for a single SMILES.
+    Ranks predicted spectra for the single molecule by energy (or prediction index).
+
+    Returns: list of TopK predictions:
+        [ (energy, entropy distance, is_true_molecule),
+          ...
+        ]
+    """
+    # hack the precursor mz if there are multiple formulae within tolerance
+    precursor_mass = common.merge_mz(precursor_mass, ppm)
+
+    real_spec = load_real_spec(real_spec, real_spec_type, precursor_mass, nce, ppm, nist_path)
+    smiles, pred_specs, pred_frags = load_pred_spec(load_dir, step_collision_energy)
+
+    # Only one SMILES, so just use the first (or only) one
+    if isinstance(smiles, list):
+        smi = smiles[0]
+    else:
+        smi = smiles
+
+    # transform spec to binned spectrum
+    real_binned = {k: common.bin_spectra([v], num_bins)[0] for k, v in real_spec.items()}
+    pred_binned_specs = [
+        {k: common.bin_spectra([v], num_bins, pool_fn='add')[0] for k, v in s.items()}
+        for s in pred_specs]
+    # now break up into individual spectra
+    if len(pred_binned_specs) == 1:
+            
+        pred_binned_specs = [[{k: v}] for k, v in pred_binned_specs[0].items()]
+        real_binned = [{k: v} for k, v in real_binned.items()]
+        pred_binned_specs = sorted(pred_binned_specs, key=lambda x: float(list(x[0].keys())[0]))
+
+        dist = [dist_bin(
+            pred,
+            real,
+            ignore_peak=(precursor_mass - 1) * 10 if ignore_precursor else None,
+            sparse=False,
+            func=dist_func
+        ) for pred, real in zip(pred_binned_specs, real_binned)]
+        dist = np.array(dist).squeeze()
+    else:
+        # compute distance for each predicted spectrum (over energies)
+        dist = dist_bin(
+            pred_binned_specs,
+            real_binned,
+            ignore_peak=(precursor_mass - 1) * 10 if ignore_precursor else None,
+            sparse=False,
+            func=dist_func
+        )
+
+    sorted_indices = np.argsort(dist)
+    # If step_collision_energy, get the energy for each prediction
+    # if step_collision_energy:
+    #     energies = [s.get('energy', idx) for idx, s in enumerate(pred_specs)]
+    # else:
+    #     energies = list(range(len(pred_specs)))
+    energies = np.array([float(k) for k in pred_specs[0].keys()])
+
+    # Only one true molecule, so is_true is always True for all
+    results = []
+    for rnk, idx in enumerate(sorted_indices[:topk]):
+        energy = energies[idx]
+        d = dist[idx]
+        results.append((energy, d, True))
+        if rnk == 0 and len(mol_name) > 0:
+            print(f'[{mol_name}] Top1 energy={energy}, ent_dist={d:.3f}')
+    return results
 
 
 def plot_top_mols(
