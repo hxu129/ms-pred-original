@@ -99,8 +99,8 @@ def predict():
     df = pd.read_csv(labels, sep="\t")
 
     if kwargs["debug"]:
-        #df = df[:10]
-        df = df[10000:20000]
+        df = df[:10]
+        #df = df[10000:20000]
         print(df.spec.value_counts())
         # print(df.spec.unique()) # should be 1 if there are 256 entries / decoys per actual test entry.. 
 
@@ -199,6 +199,8 @@ def predict():
             else:
                 device = "cpu"
             model.to(device)
+            # avoids error in pe_embedding under multithreading. 
+            torch.cuda.set_device(gpu_id)
 
             # for batch in batched_entries:
             smis, spec_names, colli_eng_vals, adducts, instruments, precursor_mzs, h5_names = list(zip(*batch))

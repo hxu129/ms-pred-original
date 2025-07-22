@@ -272,7 +272,7 @@ def iceberg_prediction(
         # run iceberg to generate in-silico spectrum
         cmd = (f'''{python_path} src/ms_pred/dag_pred/predict_smis.py \\
                --batch-size {batch_size} \\
-               --num-gpu-workers {num_workers} \\
+               --num-workers {num_workers} \\
                --dataset-labels {save_dir / f"cands_df_{exp_name}.tsv"} \\
                --sparse-out \\
                --sparse-k {sparse_k} \\
