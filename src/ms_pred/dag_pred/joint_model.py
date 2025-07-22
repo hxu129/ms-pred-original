@@ -38,7 +38,6 @@ class JointModel(pl.LightningModule):
         add_hs_inten = self.inten_model_obj.add_hs
         embed_elem_group_inten = self.inten_model_obj.embed_elem_group
         self.embed_instrument = (self.gen_model_obj.embed_instrument and self.inten_model_obj.embed_instrument)
-        # If both models embed instrument, then we can use it
 
         self.gen_tp = dag_data.TreeProcessor(
             root_encode=root_enc_gen, pe_embed_k=pe_embed_gen, add_hs=add_hs_gen, embed_elem_group=embed_elem_group_gen,
@@ -271,6 +270,7 @@ class JointModel(pl.LightningModule):
                     if elem:
                         rebatched_out['spec'].append(out['spec'].pop(0))
                     else:
+                        # TODO: ensure that this binsize is not hardcoded
                         rebatched_out['spec'].append(np.zeros((15000,)))
                 return rebatched_out
             else:

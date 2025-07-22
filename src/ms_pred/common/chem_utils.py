@@ -6,9 +6,6 @@ import pandas as pd
 from functools import reduce
 from typing import List
 import logging
-
-import dgl.nn as dgl_nn
-
 import torch
 from rdkit import Chem
 from rdkit.Chem import Atom
@@ -245,13 +242,7 @@ for ion in _ori_ions:
 
 instrument2onehot_pos = {
     "Orbitrap": 0,
-    "QTOF": 1, # Streamline upstream preprocessing to make QToF count here too 
-}
-
-
-instrument2onehot_pos = {
-    "Orbitrap": 0,
-    "QTOF": 1, # Streamline upstream preprocessing to make QToF count here too 
+    "QTOF": 1, 
 }
 
 

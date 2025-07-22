@@ -107,6 +107,7 @@ class HDF5Dataset:
     def flush(self):
         self.h5_obj.flush()
 
+
 def setup_logger(save_dir, log_name="output.log", debug=False, custom_label=""):
     """Create output directory"""
     save_dir = Path(save_dir)
@@ -257,10 +258,38 @@ def parse_spectra(spectra_file: [str, list]) -> Tuple[dict, List[Tuple[str, np.n
     return metadata, spectras
 
 
+def spec_to_ms_str(
+    spec: List[Tuple[str, np.ndarray]], essential_keys: dict, comments: dict = {}
+) -> str:
+    """spec_to_ms_str.
+
+    Turn spec ars and info dicts into str for output file
+
+
+    Args:
+        spec (List[Tuple[str, np.ndarray]]): spec
+        essential_keys (dict): essential_keys
+        comments (dict): comments
+
+    Returns:
+        str:
+    """
+
+    def pair_rows(rows):
+        return "\n".join([f"{i} {j}" for i, j in rows])
+
+    header = "\n".join(f">{k} {v}" for k, v in essential_keys.items())
+    comments = "\n".join(f"#{k} {v}" for k, v in essential_keys.items())
+    spec_strs = [f">{name}\n{pair_rows(ar)}" for name, ar in spec]
+    spec_str = "\n\n".join(spec_strs)
+    output = f"{header}\n{comments}\n\n{spec_str}"
+    return output
+
+
 def parse_spectra_mgf(
     mgf_file: str, max_num = None
 ) -> List[Tuple[dict, List[Tuple[str, np.ndarray]]]]:
-    """parse_spectr_mgf.
+    """parse_spectra_mgf.
 
     Parses spectra in the MGF file formate, with
 
@@ -490,6 +519,7 @@ def process_spec_file(meta, tuples, precision=4, merge_specs=True, exclude_paren
             new_specs[k] = new_spec
         return new_specs
 
+
 def bin_from_file(spec_file, num_bins, upper_limit) -> Tuple[dict, np.ndarray]:
     """bin_from_file.
     """
@@ -590,7 +620,6 @@ def bin_spectra(
 
     Args:
         spectras (List[np.ndarray]): Input list of spectra tuples
-            [(header, spec array)]
         num_bins (int): Number of discrete bins from [0, upper_limit)
         upper_limit (int): Max m/z to consider featurizing
         pool_fn (str): Pooling function to use for binning (max or add)
@@ -837,6 +866,7 @@ def md5(fname, chunk_size=4096):
 def str_to_hash(inp_str, digest_size=16):
     return hashlib.blake2b(inp_str.encode("ascii"), digest_size=digest_size).hexdigest()
 
+
 def rm_collision_str(key: str) -> str:
     """remove `_collision VALUE` from the string"""
     keys = key.split('_collision')
@@ -846,6 +876,7 @@ def rm_collision_str(key: str) -> str:
         return key
     else:
         raise ValueError(f'Unrecognized key: {key}')
+
 
 def is_iterable(obj):
     try:

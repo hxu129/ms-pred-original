@@ -67,9 +67,10 @@ def write_to_h5(out_entries, out_dir):
 
 datasets = ["nist20"]
 max_node = 100
-subform_name = "magma_subform_50"
 split_override = None
+datasets = ["casmi22"]
 splits = ["split_1", "scaffold_1"]
+splits = ["all_split"]
 
 if __name__ == '__main__':
     for dataset in datasets:

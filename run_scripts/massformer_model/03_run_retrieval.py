@@ -60,7 +60,8 @@ test_entries = [
 
 for test_entry in test_entries:
     dataset = test_entry['dataset']
-    train_split =  test_entry['train_split']
+    test_dataset = test_entry['test_dataset']
+    train_split = test_entry['train_split']
     split = test_entry['test_split']
     maxk = test_entry['max_k']
 
@@ -72,8 +73,12 @@ for test_entry in test_entries:
 
     labels = f"retrieval/cands_df_{split}_{maxk}.tsv"
 
-    save_dir = model.parent.parent / f"retrieval_{dataset}_{split}_{maxk}"
-    save_dir.mkdir(exist_ok=True)
+    save_dir = model.parent.parent
+    if test_dataset != dataset:
+        save_dir = save_dir / "cross_dataset" / test_dataset
+
+    save_dir = save_dir / f"retrieval_{dataset}_{split}_{maxk}"
+    save_dir.mkdir(exist_ok=True, parents=True)
 
 
     cmd = f"""python {pred_file} \\

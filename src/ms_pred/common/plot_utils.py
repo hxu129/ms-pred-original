@@ -211,6 +211,7 @@ def plot_compare_ms(spec1, spec2, spec1_name='', spec2_name='', ce_label='', dpi
     for spine in ['top', 'right']:
         ax.spines[spine].set_visible(False)
 
+
 def plot_compare_ref_ms_with_structures(
         spec1, spec2, spec3=None, spec4=None,
         spec1_name='Target', spec2_name='Reference',

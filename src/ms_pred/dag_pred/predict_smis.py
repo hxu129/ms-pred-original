@@ -275,7 +275,7 @@ def predict():
             write_h5_func(output_entries)
         else:
             common.chunked_parallel(all_batched_entries, producer_func, output_func=write_h5_func,
-                                    chunks=100000, max_cpu=kwargs["num_workers"])
+                                    chunks=1000, max_cpu=kwargs["num_workers"])
 
 
 if __name__ == "__main__":

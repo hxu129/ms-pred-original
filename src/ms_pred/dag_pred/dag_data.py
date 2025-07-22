@@ -467,7 +467,6 @@ class DAGDataset(Dataset):
         self.name_to_adduct = {
             i: adduct_map[common.rm_collision_str(i)] for i in self.spec_names
         }
-
         self.name_to_adducts = {
             i: common.ion2onehot_pos[self.name_to_adduct[i]] for i in self.spec_names
         }

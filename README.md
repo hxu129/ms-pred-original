@@ -2,8 +2,8 @@
 
 This repository contains implementations for the following spectrum simulator models predicting molecular tandem mass spectra from molecules: 
 
-- 🧊 ICEBERG 🧊️: [Inferring CID by Estimating Breakage Events and Reconstructing their Graphs](http://arxiv.org/abs/2304.13136) (now available to run through [GNPS2](https://gnps2.org/))
-- 🏃‍ MARASON 🏃‍: [Neural Graph Matching Improves Retrieval Augmented Generation in Molecular Machine Learning](https://arxiv.org/html/2502.17874) (Code merging WIP)
+- 🧊 ICEBERG 🧊️: [Inferring CID by Estimating Breakage Events and Reconstructing their Graphs](http://arxiv.org/abs/2304.13136) and [Neural Spectral Prediction for Structure Elucidation with Tandem Mass Spectrometry](https://www.biorxiv.org/content/10.1101/2025.05.28.656653v1)
+- 🏃‍ MARASON 🏃‍: [Neural Graph Matching Improves Retrieval Augmented Generation in Molecular Machine Learning](https://arxiv.org/html/2502.17874)
 - 🧣 SCARF 🧣: [Subformula Classification for Autoregressively Reconstructing Fragmentations](https://arxiv.org/abs/2303.06470)
 
 ICEBERG predicts spectra at the level of molecular fragments, whereas SCARF predicts spectra at the level of chemical formula. In order to fairly compare various spectra models, we implement a number of baselines and alternative models using equivalent settings across models (i.e., same covariates, hyeprparmaeter sweeps for each, etc.):
@@ -24,11 +24,11 @@ Contributors: Sam Goldman, Runzhong Wang, Rui-Xi Wang, Mrunali Manjrekar, John B
 
 
 1. [Install](#setup)  
-2. [Data](#data)  
-3. [Experiments](#experiments)    
-4. [Analysis](#analysis)    
-5. [Structural elucidation](#elucidation)    
-6. [Augmentation](#augmentation)    
+2. [Demo](#demo)
+3. [Data](#data)
+4. [Experiments](#experiments)    
+5. [Analysis](#analysis)    
+6. [Structural elucidation](#elucidation)    
 7. [Citation](#citation)    
 
 
@@ -51,7 +51,24 @@ mamba activate ms-gen
 pip install -r requirements.txt
 python3 setup.py develop
 ```
-Note: if you are not using GPU, please comment the CUDA-based packages in ``environment.yaml``.
+Installation will take ~5 minutes.
+
+Note: if you are not using GPU, please comment the CUDA-based packages in ``envorinment.yaml``.
+
+## Demo <a name="demo"></a>
+A demo of how to use mass spectrum predictors (ICEBERG as an example) for structural elucidation campaigns can be found at [``notebooks/iceberg_2025_biorxiv/iceberg_demo_pubchem_elucidation.ipynb``](notebooks/iceberg_2025_biorxiv/iceberg_demo_pubchem_elucidation.ipynb).
+
+Please go through the following prerequisites to run the demo:
+* Clone the repository ``git clone https://github.com/coleygroup/ms-pred.git``.
+* Start a jupyter notebook server (by ``jupyter notebook``), and navigate to ``notebooks/iceberg_2025_biorxiv/iceberg_demo_pubchem_elucidation.ipynb`` in the web UI.
+* Get pretrained ICEBERG model weights.
+    * You can either train the model by yourself (following instructions below);
+    * Or if you have an NSIT'20 license (or newer), you can [email the maintainer with a proof of license](mailto:runzhong@mit.edu?subject=Inquiry%20of%20pretrianed%20ICEBERG%20on%20NIST20&body=My%20organization%20has%20a%20NIST'20%20(or%20newer)%20license%20and%20I%20would%20like%20to%20receive%20pretrained%20weights%20of%20ICEBERG%20on%20NIST'20.%20Please%20find%20the%20proof%20of%20purchase%20as%20attached.)
+* Update [``the configuration file``](configs/iceberg/iceberg_elucidation.yaml) based your local setting. Change ``python_path`` to your Python excutiable, and update ``gen_ckpt`` and ``inten_ckpt`` to the path of your pretrained models.
+    * When you have a GPU with smaller RAM, set smaller numbers for ``batch_size`` and ``num_workers`` to fit the model into GPU RAM (``batch_size: 8``, ``num_workers: 6`` tested on NVIDIA RTX 4070M 8GB; ``batch_size: 8``, ``num_workers: 12`` tested on NVIDIA RTX A5000 24GB).
+    * CPU-only inference is also feasible if you set ``cuda_devices: None``.
+ 
+Running the demo takes <2 minutes with a regular desktop GPU.
 
 ## Data <a name="data"></a>
 
@@ -59,8 +76,8 @@ Note: if you are not using GPU, please comment the CUDA-based packages in ``envi
 > You can checkout to the [``iceberg_analychem_2024`` branch](https://github.com/coleygroup/ms-pred/tree/iceberg_analychem_2024)
 > with the legacy code that supports NPLIB1.
 
-``nist20`` is a commercial dataset is available for purchase through [several vendors worldwide](https://chemdata.nist.gov/dokuwiki/doku.php?id=chemdata:distributors).
-Given the scale of effort required to purchase samples, run experiments, and collect the amount of spectra,
+``nist20`` is a commercial dataset available for purchase through [several vendors worldwide](https://chemdata.nist.gov/dokuwiki/doku.php?id=chemdata:distributors).
+Given the scale of effort required to purchase samples, run experiments, and collect such a large amount of spectra,
 and that NIST’20 is the only database where all spectra have collision energy annotations, this dataset is a reasonable investment in mass spectrum-related research in the
 absence of a thorough open-source replacement. 
 
@@ -103,6 +120,11 @@ This can be done with the following script, specifying an appropriate dataset:
 
 ```
 
+To get the PubChem-SMILES mapping that's required for contrastive finetuning, 
+please download [pubchem_formulae_inchikey.hdf5](https://zenodo.org/records/15529765/files/pubchem_formulae_inchikey.hdf5)
+and place it at ``data/pubchem/pubchem_formulae_inchikey.hdf5`` 
+You don't need this if you decide to skip contrastive finetuning.
+
 
 ### Retrieval
 
@@ -144,13 +166,13 @@ The internal pipeline used to conduct experiments can be followed below:
 > If you want to replicate our reported result with random + scaffold splits and 3 random seeds, please uncomment
 > all entries in the following files
 > * ``configs/iceberg/*.yaml``
-> * ``02_sweep_gen_thresh.py``
-> * ``05_predict_dag_inten.py``
-> * ``06_run_retrieval.py``
+> * ``run_scripts/iceberg/02_sweep_gen_thresh.py``
+> * ``run_scripts/iceberg/05_predict_dag_inten.py``
+> * ``run_scripts/iceberg/06_run_retrieval.py``
 
 > You need two GPUs with at least 24GB RAM to train ICEBERG (we used NVIDIA A5000 for development). If you are trying to
-> train the model on a smaller GPU, try cutting down the batch size and skip the contrastive 
-> finetuning step. Note that changing training parameters will affect the model performance.
+> train the model on a smaller GPU, try cutting down the batch size and skipping the contrastive 
+> finetuning step. Note that changing training parameters will affect the model's performance.
 
 Instead of running in batched pipeline model, individual gen training, inten
 training, and predict calls can be  made using the following scripts respectively:
@@ -159,12 +181,12 @@ training, and predict calls can be  made using the following scripts respectivel
 2. `python src/ms_pred/dag_pred/train_inten.py`
 3. `python src/ms_pred/dag_pred/predict_smis.py`
 
-An example of how to use ICEBERG for structural elucidation campaigns can be found at ``notebooks/iceberg_2025_arxiv/iceberg_demo_pubchem_elucidation.ipynb``.
+An example of how to use ICEBERG for structural elucidation campaigns can be found at ``notebooks/iceberg_2025_biorxiv/iceberg_demo_pubchem_elucidation.ipynb``.
 
 ### MARASON
 
-MARASON is trained in two parts: a learned fragment generator (the same as the one in ICEBERG with extra support of different instrument types) and an RAG-based intensity predictor. The pipeline for training and evaluating this model can be accessed in `run_scripts/marason/`. 
-There is an all-in-one script ``run_scripts/marason/run_all.sh`` that trains the up-to-date version of MARASON on NIST'20 and MSG dataset. 
+MARASON is trained in two parts: a learned fragment generator (the same as the one in ICEBERG) and an RAG-based intensity predictor. The pipeline for training and evaluating this model can be accessed in `run_scripts/marason/`. 
+There is an all-in-one script ``run_scripts/marason/run_all.sh`` that trains the up-to-date version of MARASON on NIST'20 and MassSpecGym dataset. 
 The internal pipeline used to conduct experiments can be followed below:
 
 1. *Train dag model*: `run_scripts/marason/01_run_marason_gen_train.sh`   
@@ -178,10 +200,10 @@ The internal pipeline used to conduct experiments can be followed below:
 > 
 > If you want to replicate our reported result with random + scaffold splits and 3 random seeds, please uncomment
 > all entries in the following files
-> * ``configs/iceberg/*.yaml``
-> * ``02_sweep_gen_thresh.py``
-> * ``05_predict_dag_inten.py``
-> * ``06_run_retrieval.py``
+> * ``configs/marason/*.yaml``
+> * ``run_scripts/marason/02_sweep_gen_thresh.py``
+> * ``run_scripts/marason/05_predict_dag_inten.py``
+> * ``run_scripts/marason/06_run_retrieval.py``
 
 > Note that since the reference-target pairs can be pre-computed, you can save the computed pairs to a given directory by setting `save-reference` 
 > to true and `reference-dir` to the desired directory in `configs/marason/marason_inten_train_nist.yaml` and 
@@ -194,13 +216,13 @@ The internal pipeline used to conduct experiments can be followed below:
 > Note that changing training parameters will affect the model performance.
 
 Instead of running in batched pipeline model, individual gen training, inten
-training, and predict calls can be  made using the following scripts respectively:
+training, and predict calls can be made using the following scripts respectively:
 
 1. `python src/ms_pred/marason/train_gen.py`
 2. `python src/ms_pred/marason/train_inten.py`
 3. `python src/ms_pred/marason/predict_smis.py`
 
-You can use `python launcher_scripts/run_from_config.py configs/marason/marason_inten_test_nist.yaml` to generate relevant analysis and visualizations in the MARASON paper. You can draw the matching pattern and the spectra visualization by setting `draw` and `plot-spec` to be true respectively. If you want to do the similarity-grouped analysis described in the paper, set `draw` and `plot-spec` to be false. The bootstrap analysis for MSG retrieval task can be carried out by running `src/ms_pred/marason/bootstrap.py`.
+You can use `python launcher_scripts/run_from_config.py configs/marason/marason_inten_test_nist.yaml` to generate relevant analysis and visualizations in the MARASON paper. You can draw the matching pattern and the spectra visualization by setting `draw` and `plot-spec` to be true respectively. If you want to do the similarity-grouped analysis described in the paper, set `draw` and `plot-spec` to be false. The bootstrap analysis for MassSpecGym retrieval task can be carried out by running `src/ms_pred/marason/bootstrap.py`.
 
 ### SCARF
 
@@ -326,6 +348,23 @@ Make prediction:
 
 ```
 
+### MetFrag
+
+MetFrag is a learning-free fragmentation method that is used for ranking candidate molecules w.r.t. mass spectra. To run MetFrag in our retrieval benchmark setting:
+
+Download [MetFrag command line tool](https://github.com/ipb-halle/MetFragRelaunched/releases). It should look like
+
+```
+MetFragCommandLine-X.X.X.jar  # We used 2.5.6 for benchmarking
+```
+
+Make prediction:
+```
+
+. run_scripts/metfrag/run_metfrag.py
+. run_scripts/metfrag/process_metfrag.py
+
+```
 
 ### Freq baselines
 
@@ -348,14 +387,9 @@ predictios `analysis/form_pred_eval.py` and spectra predictions
 
 Additional analyses used for figure generation were conducted in `notebooks/`.
 
-## Structural elucidation <a name="elucidation"></a>
-
-Forward models could be applied for structural elucidation tasks with a set of candidate structures. An example workflow by taking all PubChem structures with the same chemical formula is shown in [``notebooks/iceberg_2025_arxiv/iceberg_demo_pubchem_elucidation.ipynb``](notebooks/iceberg_2025_arxiv/iceberg_demo_pubchem_elucidation.ipynb). In this example, ICEBERG predicts simulated spectra for all candidates, then all candidates are ranked based on their entropy similarities to the experimental spectrum.
-
 ## Augmentation <a name="augmentation"></a>
 
-One use case for forward spectrum prediction models is to use the trained model as a surrogate model for augmenting an inverse model (e.g., [MIST](http://github.com/samgoldman97/mist/)). An example workflow for doing this is shown in `run_scripts/iceberg_augmentation`. The target dataset including a labels file, spectrum files, split, and target augmetnation file for prediction should first be coppied into the `data/spec_datasets`. Once this is complete, the runscripts folder can be copied, modified to use the datset of interest, and run. The ideal output will be a single MGF and labels files including the ouptut predictions. 
-
+Forward models could be applied for structural elucidation tasks with a set of candidate structures. An example workflow by taking all PubChem structures with the same chemical formula is shown in [``notebooks/iceberg_2025_biorxiv/iceberg_demo_pubchem_elucidation.ipynb``](notebooks/iceberg_2025_biorxiv/iceberg_demo_pubchem_elucidation.ipynb). In this example, ICEBERG predicts simulated spectra for all candidates, then all candidates are ranked based on their entropy similarities to the experimental spectrum.
 
 ## Citation <a name="citation"></a>
 
@@ -385,11 +419,21 @@ We ask any user of this repository to cite the following works based upon the po
   year={2024},
   publisher={ACS Publications}
 }
+
+@article{wang2025neuralspec,
+	author={Wang, Runzhong and Manjrekar, Mrunali and Mahjour, Babak and Avila-Pacheco, Julian and Provenzano, Joules and Reynolds, Erin and Lederbauer, Magdalena and Mashin, Eivgeni and Goldman, Samuel L. and Wang, Mingxun and Weng, Jing-Ke and Plata, Desir{\'e}e L. and Clish, Clary B. and Coley, Connor W.},
+	title={Neural Spectral Prediction for Structure Elucidation with Tandem Mass Spectrometry},
+	elocation-id = {2025.05.28.656653},
+	year={2025},
+	URL={https://www.biorxiv.org/content/early/2025/06/01/2025.05.28.656653},
+	eprint={https://www.biorxiv.org/content/early/2025/06/01/2025.05.28.656653.full.pdf},
+	journal={bioRxiv}
+}
 ```
 
 🏃‍MARASON model:
 ```
-@article{wang2025neural,
+@article{wang2025neuralgraph,
   title={Neural Graph Matching Improves Retrieval Augmented Generation in Molecular Machine Learning},
   author={Wang, Runzhong and Wang, Rui-Xi and Manjrekar, Mrunali and Coley, Connor W},
   journal={International Conference on Machine Learning},

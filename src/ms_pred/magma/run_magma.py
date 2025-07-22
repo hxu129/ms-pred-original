@@ -457,7 +457,7 @@ def run_magma_augmentation(
     if debug:
         write_objs = [partial_aug_safe(i) for i in tqdm(params[:10])]
     else:
-        write_objs = common.chunked_parallel(params, partial_aug_safe, max_cpu=workers, chunks=10000)
+        write_objs = common.chunked_parallel(params, partial_aug_safe, max_cpu=workers, chunks=1000)
 
     spec_h5.close()
     logging.info('Write to hdf5 file output')

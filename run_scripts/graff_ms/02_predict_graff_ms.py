@@ -22,18 +22,21 @@ devices = ",".join(["0"])
 for test_entry in test_entries:
     split = test_entry['split']
     dataset_name = test_entry['dataset']
+    test_dataset_name = test_entry['test_dataset']
     folder = test_entry['folder']
 
     res_folder = Path(f"results/graff_ms_baseline_{dataset_name}")
     model = res_folder / f"{folder}/version_0/best.ckpt"
 
     save_dir = model.parent.parent
+    if test_dataset_name != dataset_name:
+        save_dir = save_dir / "cross_dataset" / test_dataset_name
     save_dir = save_dir / "preds"
 
-    save_dir.mkdir(exist_ok=True)
+    save_dir.mkdir(exist_ok=True, parents=True)
     cmd = f"""python {python_file} \\
     --batch-size 32 \\
-    --dataset-name {dataset_name} \\
+    --dataset-name {test_dataset_name} \\
     --split-name {split}.tsv \\
     --num-workers {num_workers} \\
     --subset-datasets test_only  \\

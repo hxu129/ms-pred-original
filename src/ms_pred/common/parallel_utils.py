@@ -6,6 +6,8 @@ import itertools
 from tqdm import tqdm
 import multiprocess.context as ctx
 ctx._force_start_method('spawn')
+import multiprocess.context as ctx
+ctx._force_start_method('spawn')
 from torch.multiprocessing import Pool, set_start_method
 
 
@@ -22,9 +24,12 @@ def simple_parallel(
     timeout: Length of timeout
     max_retries: Num times to retry this
     use_ray
+    spawn=True
 
     """
     from pathos import multiprocessing as mp
+    if spawn:
+        ctx._force_start_method('spawn')
 
     cpus = min(mp.cpu_count(), max_cpu)
     with mp.ProcessPool(processes=cpus) as pool:

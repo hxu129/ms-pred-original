@@ -535,6 +535,8 @@ class FragGNN(pl.LightningModule):
         # Step 2: Featurize the root molecule
         root_graph_dict = [self.tree_processor.featurize_frag(frag=rf, engine=e, add_random_walk=False)  # add random walk feature later in batched
                            for rf, e in zip(root_frag, engine)]
+        root_graph_dict = [self.tree_processor.featurize_frag(frag=rf, engine=e, add_random_walk=False)  # add random walk feature later in batched
+                           for rf, e in zip(root_frag, engine)]
 
         root_repr = None
         if self.root_encode == "gnn":

@@ -140,7 +140,6 @@ def train_model():
     pe_embed_k = kwargs["pe_embed_k"]
     root_encode = kwargs["root_encode"]
     embed_elem_group = kwargs["embed_elem_group"]
-    # TODO: do we need to consider whether Tree would look different based on instrument type
     tree_processor = dag_data.TreeProcessor(
         pe_embed_k=pe_embed_k, root_encode=root_encode, add_hs=add_hs, embed_elem_group=embed_elem_group,
     )

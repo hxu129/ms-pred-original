@@ -109,7 +109,6 @@ def predict():
     model = gen_model.FragGNN.load_from_checkpoint(best_checkpoint, map_location='cpu')
     avail_gpu_num = torch.cuda.device_count()
 
-
     logging.info(f"Loaded model with from {best_checkpoint}")
     if kwargs["num_decoys"] == 0:
         all_save_path = [save_dir / "tree_preds.hdf5"]

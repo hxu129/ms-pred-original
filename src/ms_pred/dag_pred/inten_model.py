@@ -463,6 +463,7 @@ class IntenGNN(pl.LightningModule):
             broken (_type_): _description_
             adducts (_type_): _description_
             collision_engs (_type_): _description_
+            instruments (_type_): _description_
             precursor_mzs (_type_): _description_
             max_add_hs (_type_, optional): _description_. Defaults to None.
             max_remove_hs (_type_, optional): _description_. Defaults to None.

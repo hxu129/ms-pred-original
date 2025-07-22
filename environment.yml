@@ -5,6 +5,7 @@ channels:
 - conda-forge
 - pyg
 - bioconda
+- bioconda
 dependencies:
 - python=3.8.*
 - cython
@@ -15,7 +16,7 @@ dependencies:
 - pytorch-lightning=1.6.*
 - pip=21.2.*
 - ipykernel=6.0.*
-- pytorch::pytorch=1.9.0=py3.8_cuda11.1_cudnn8.0.5_0
+- pytorch::pytorch=1.9.1=py3.8_cuda11.1_cudnn8.0.5_0
 - cudatoolkit=11.1
 - einops
 - nb_conda_kernels=2.3.*
