@@ -1,8 +1,44 @@
+"denoising_utils.py"
 import numpy as np
+try:
+    import spectral_denoising as sd
+except ImportError as e:
+    # Could also be that the C error is an issue!
+    if "GLIBC" in str(e):
+        raise 
+    else:
+        print("spectral_denoising package not found. Please install it using 'pip install spectral-denoising'.")
 
 
-# from spectral_denoising repository, source: https://github.com/FanzhouKong/spectral_denoising/blob/main/spectral_denoising/spectral_denoising.py
-def electronic_denoising(msms):
+def topk_windowed(msms, k=6, window=100):
+    """
+    # from each window of 100 m/z, take the top 6 peaks
+    """
+    mz = msms[:, 0]
+    intensity = msms[:, 1]
+    window_idx = np.floor_divide(mz, window).astype(int)
+
+    selected_groups = []
+    for w in np.unique(window_idx):
+        group = msms[window_idx == w]
+        if group.shape[0] > k:
+            # pick top_n by intensity
+            idx = np.argsort(group[:, 1])[::-1][:k]
+            selected_groups.append(group[idx])
+        else:
+            selected_groups.append(group)
+
+    if not selected_groups:
+        return np.empty((0, 2))
+
+    # concatenate and sort by m/z
+    filtered = np.vstack(selected_groups)
+    return filtered[np.argsort(filtered[:, 0])]
+
+
+
+# adapted from spectral_denoising repository, source: https://github.com/FanzhouKong/spectral_denoising/blob/main/spectral_denoising/spectral_denoising.py
+def combined_electronic_denoising(msms):
     """
     Perform electronic denoising on a given mass spectrometry (MS/MS) spectrum.
     This function processes the input MS/MS spectrum by sorting the peaks based on their intensity,
@@ -17,25 +53,40 @@ def electronic_denoising(msms):
     """
     if isinstance(msms, float):
         return np.nan
-    mass, intensity = msms.T[0], msms.T[1]
-    order = np.argsort(intensity)
-    mass = mass[order]
-    intensity = intensity[order]
+    # apply two possible filtering steps, collect as mask and apply mask at end. 
+    # first, sort:
+    sorted_msms = msms[msms[:, 1].argsort()]
+    mass, intensity = sorted_msms.T[0], sorted_msms.T[1]
+    
     mass_confirmed = np.array([])
     intensity_confirmed = np.array([])
+
     while len(intensity) > 0:
         seed_intensity = np.max(intensity)
-        idx_left = np.searchsorted(intensity, seed_intensity * 0.999, side='left')
-        mass_temp = mass[idx_left:]
-        intensity_temp = intensity[idx_left:]
-        if len(mass_temp) <= 3:
-            mass_confirmed = np.concatenate((mass_confirmed, mass_temp))
-            intensity_confirmed = np.concatenate((intensity_confirmed, intensity_temp))
-        intensity = intensity[0:idx_left]
-        mass = mass[0:idx_left]
-    if len(mass_confirmed) == 0:
-        return np.nan
-    return (sort_spectrum(pack_spectrum(mass_confirmed, intensity_confirmed)))
+        if seed_intensity > 0.2:
+            # More aggressive clustering: 0.94
+            idx_left = np.searchsorted(intensity, seed_intensity*0.999, side= 'left')
+            mass_temp = mass[idx_left:]
+            intensity_temp = intensity[idx_left:]
+            if len(mass_temp)<=3:
+                mass_confirmed =  np.concatenate((mass_confirmed, mass_temp))
+                intensity_confirmed = np.concatenate((intensity_confirmed,intensity_temp))
+            intensity = intensity[0:idx_left]
+            mass = mass[0:idx_left]
+        else: # lesser so more aggressive clustering
+            # More aggressive clustering: 0.94
+            idx_left = np.searchsorted(intensity, seed_intensity*0.94, side= 'left')
+            mass_temp = mass[idx_left:]
+            intensity_temp = intensity[idx_left:]
+            if len(mass_temp)<=3:
+                mass_confirmed =  np.concatenate((mass_confirmed, mass_temp))
+                intensity_confirmed = np.concatenate((intensity_confirmed,intensity_temp))
+            intensity = intensity[0:idx_left]
+            mass = mass[0:idx_left]
+
+    if len(mass_confirmed)==0:
+        return np.nan   
+    return(sort_spectrum(pack_spectrum(mass_confirmed, intensity_confirmed)) )
 
 
 def sort_spectrum(msms):
@@ -56,20 +107,64 @@ def sort_spectrum(msms):
 
     return msms_T.T
 
-
 def pack_spectrum(mass, intensity):
     """
     Inverse of break_spectrum. Packs mass and intensity arrays into a single 2D array, which is standardized MS/MS spectrum data format in this project.
-    This function takes two arrays, `mass` and `intensity`, and combines them into a single 2D array where each row
+    This function takes two arrays, `mass` and `intensity`, and combines them into a single 2D array where each row 
     corresponds to a pair of mass and intensity values. If either of the input arrays is empty, the function returns NaN.
-
+    
     Parameters:
         mass (numpy.ndarray): An array of mass values.
         intensity (numpy.ndarray): An array of intensity values.
     Returns:
         numpy.ndarray: A 2D array with mass and intensity pairs if both input arrays are non-empty, otherwise NaN.
     """
-    if len(mass) > 0 and len(intensity) > 0:
-        return (np.array([mass, intensity]).T)
+
+    if len(mass)>0 and len(intensity)>0:
+        return(np.array([mass, intensity]).T)
     else:
-        return (np.nan)
+        return(np.nan)
+
+
+def denoise_spectrum(spec):
+    """
+    (Custom) denoise a single spectrum using electronic denoising.
+
+    Parameters:
+        spec (numpy.ndarray): The first item is always m/z and the second item is intensity. [i.e., not binned]
+
+    Returns:
+        numpy.ndarray: The cleaned spectrum with electronic noises removed. If no ion presents, will return np.nan.
+    """
+    if isinstance(spec, float):
+        return np.nan
+    spec = combined_electronic_denoising(spec)
+    spec = topk_windowed(spec)
+    spec = spec[spec[:, 1] > 0.03]
+    return spec
+
+def denoise_spectra_dict(spec_dict, experimental=False, **kwargs):
+    """
+    # TODO:
+    # include electronic
+    # include formula-based (for experimental spectra)
+    # and something that's across energy 
+    """
+    spec_dict_new = dict()
+    for ev, spec in spec_dict.items():
+        spec = denoise_spectrum(spec)
+        if experimental:
+            spec = denoise_spectrum_kong(spec, **kwargs)
+
+        spec_dict_new[ev] = spec
+
+
+    return spec_dict_new
+
+
+def denoise_spectrum_kong(spec, smiles, adduct, precursor_mz):
+    if smiles: 
+        spec = sd.spectral_denoising(spec, smiles, adduct)
+    # clean up peak around precursor m/z... using +=2 for now but can change. 
+    spec = spec[(np.abs(spec[:, 0] - precursor_mz) > 2) | (np.abs(spec[:, 0] - precursor_mz) < 0.02)] 
+    return spec

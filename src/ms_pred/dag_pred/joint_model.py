@@ -37,6 +37,7 @@ class JointModel(pl.LightningModule):
         pe_embed_inten = self.inten_model_obj.pe_embed_k
         add_hs_inten = self.inten_model_obj.add_hs
         embed_elem_group_inten = self.inten_model_obj.embed_elem_group
+        self.embed_instrument = (self.gen_model_obj.embed_instrument and self.inten_model_obj.embed_instrument)
 
         self.gen_tp = dag_data.TreeProcessor(
             root_encode=root_enc_gen, pe_embed_k=pe_embed_gen, add_hs=add_hs_gen, embed_elem_group=embed_elem_group_gen,
@@ -55,8 +56,8 @@ class JointModel(pl.LightningModule):
             inten_checkpoint
         """
 
-        gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint)
-        inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint)
+        gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint, map_location="cpu")
+        inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint, map_location="cpu")
         return cls(gen_model_obj, inten_model_obj)
 
     def predict_mol(
@@ -68,9 +69,11 @@ class JointModel(pl.LightningModule):
         threshold: float,
         device: str,
         max_nodes: int,
+        instrument: str = None,
         binned_out: bool = False,
         adduct_shift: bool = False,
         canonical_root_smi: bool = False,
+        name: str = None,
     ) -> dict:
         """predict_mol.
 
@@ -95,44 +98,91 @@ class JointModel(pl.LightningModule):
             collision_eng = [collision_eng]
             precursor_mz = [precursor_mz]
             adduct = [adduct]
+            if self.embed_instrument:
+                instrument = [instrument] 
         else:
             batched_input = True
         batch_size = len(root_smi)
         if not canonical_root_smi:
+            # first remove stereochemistry, then roundtrip
+            root_smi = [common.rm_stereo(smi) for smi in root_smi]
             root_smi = [common.smiles_from_inchi(common.inchi_from_smiles(_)) for _ in root_smi] # canonical smiles
+            # use to filter
+            valid_mask = [r_smi != None for r_smi in root_smi]
+            # use np.arrays to reprocess:
+            if sum(valid_mask) < batch_size:
+                print("['joint_model.py']: Some SMILES could not be canonicalized via inchi: ", [(smi[i], name[i]) for i in range(batch_size) if not valid_mask[i]])
+                root_smi = tuple(np.array(root_smi)[valid_mask].tolist())
+                collision_eng = tuple(np.array(collision_eng)[valid_mask].tolist())
+                precursor_mz = tuple(np.array(precursor_mz)[valid_mask].tolist())
+                adduct = tuple(np.array(adduct)[valid_mask].tolist())
+                if self.embed_instrument:
+                    instrument = tuple(np.array(instrument)[valid_mask].tolist())
+        else: 
+            valid_mask = [True] * batch_size
 
-        frag_tree = self.gen_model_obj.predict_mol(
-            root_smi=root_smi,
-            collision_eng=collision_eng,
-            precursor_mz=precursor_mz,
-            adduct=adduct,
-            threshold=threshold,
-            device=device,
-            max_nodes=max_nodes,
-            canonical_root_smi=True,
-        )
+        gen_kwargs = {
+            "root_smi": root_smi,
+            "collision_eng": collision_eng,
+            "precursor_mz": precursor_mz,
+            "adduct": adduct,
+            "threshold": threshold,
+            "device": device,
+            "max_nodes": max_nodes,
+            "canonical_root_smi": True
+        }
+        if self.embed_instrument: 
+            gen_kwargs["instrument"] = instrument
+        
+        frag_tree = self.gen_model_obj.predict_mol(**gen_kwargs)
+
         processed_trees = []
         out_trees = []
-        for r_smi, colli_eng, adct, p_mz, tree in zip(root_smi, collision_eng, adduct, precursor_mz, frag_tree):
-            tree = {
-                "root_canonical_smiles": r_smi,
-                "name": "",
-                "collision_energy": colli_eng,
-                "frags": tree,
-                "adduct": adct
-            }
+        if self.embed_instrument:
+            for r_smi, colli_eng, adct, instrument, p_mz, tree in zip(root_smi, collision_eng, adduct, instrument, precursor_mz, frag_tree):
+                tree = {
+                    "root_canonical_smiles": r_smi,
+                    "name": "",
+                    "collision_energy": colli_eng,
+                    "frags": tree,
+                    "adduct": adct, 
+                    "instrument": instrument,
+                }
 
-            processed_tree = self.inten_tp.process_tree_inten_pred(tree)
+                processed_tree = self.inten_tp.process_tree_inten_pred(tree)
 
-            # Save for output wrangle
-            out_tree = processed_tree["tree"]
-            processed_tree = processed_tree["dgl_tree"]
+                # Save for output wrangle
+                out_tree = processed_tree["tree"]
+                processed_tree = processed_tree["dgl_tree"]
 
-            processed_tree["adduct"] = common.ion2onehot_pos[adct]
-            processed_tree["name"] = ""
-            processed_tree["precursor"] = p_mz
-            processed_trees.append(processed_tree)
-            out_trees.append(out_tree)
+                processed_tree["adduct"] = common.ion2onehot_pos[adct]
+                processed_tree['instrument'] = common.instrument2onehot_pos[instrument]
+                processed_tree["name"] = ""
+                processed_tree["precursor"] = p_mz
+                processed_trees.append(processed_tree)
+                out_trees.append(out_tree)
+        else:
+            for r_smi, colli_eng, adct, p_mz, tree in zip(root_smi, collision_eng, adduct, precursor_mz, frag_tree):
+                tree = {
+                    "root_canonical_smiles": r_smi,
+                    "name": "",
+                    "collision_energy": colli_eng,
+                    "frags": tree,
+                    "adduct": adct, 
+                }
+
+                processed_tree = self.inten_tp.process_tree_inten_pred(tree)
+
+                # Save for output wrangle
+                out_tree = processed_tree["tree"]
+                processed_tree = processed_tree["dgl_tree"]
+
+                processed_tree["adduct"] = common.ion2onehot_pos[adct]
+                processed_tree["name"] = ""
+                processed_tree["precursor"] = p_mz
+                processed_trees.append(processed_tree)
+                out_trees.append(out_tree)
+
         batch = self.inten_collate_fn(processed_trees)
         inten_frag_ids = batch["inten_frag_ids"]
 
@@ -149,9 +199,11 @@ class JointModel(pl.LightningModule):
 
         assert adduct_shift, 'adduct shift must be enforced'
 
-        adducts = safe_device(batch["adducts"]).to(device)
-        collision_engs = safe_device(batch["collision_engs"]).to(device)
-        precursor_mzs = safe_device(batch["precursor_mzs"]).to(device)
+        adducts = safe_device(batch["adducts"])
+        collision_engs = safe_device(batch["collision_engs"])
+        if self.embed_instrument:
+            instruments = safe_device(batch["instruments"])
+        precursor_mzs = safe_device(batch["precursor_mzs"])
         root_forms = safe_device(batch["root_form_vecs"])
         frag_forms = safe_device(batch["frag_form_vecs"])
 
@@ -170,6 +222,7 @@ class JointModel(pl.LightningModule):
             binned_out=binned_out,
             adducts=adducts,
             collision_engs=collision_engs,
+            instruments=instruments if self.embed_instrument else None,
             precursor_mzs=precursor_mzs,
         )
 
@@ -210,6 +263,18 @@ class JointModel(pl.LightningModule):
                 out["frag"].append(seen_frag)
 
         if batched_input:
-            return out
+            # need to return to original order, using valid_mask
+            if not canonical_root_smi and sum(valid_mask) < batch_size:
+                rebatched_out = dict()
+                rebatched_out["spec"] = []
+                for elem in valid_mask:
+                    if elem:
+                        rebatched_out['spec'].append(out['spec'].pop(0))
+                    else:
+                        # TODO: ensure that this binsize is not hardcoded
+                        rebatched_out['spec'].append(np.zeros((15000,)))
+                return rebatched_out
+            else:
+                return out
         else:
             return {k: v[0] for k, v in out.items()}
