@@ -23,6 +23,8 @@ python data_scripts/dag/add_dag_intens.py \
 #	--num-workers 32 \
 #	--add-raw
 #
+
+# NIST20 scaffold splits
 #python data_scripts/dag/add_dag_intens.py \
 #	--pred-dag-folder  results/dag_nist20/scaffold_1_rnd1/preds_train_100/tree_preds.hdf5 \
 #	--true-dag-folder data/spec_datasets/nist20/subformulae/no_subform.hdf5 \
@@ -43,3 +45,26 @@ python data_scripts/dag/add_dag_intens.py \
 #	--out-dag-folder results/dag_nist20/scaffold_1_rnd3/preds_train_100_inten.hdf5  \
 #	--num-workers 32 \
 #	--add-raw
+
+
+# MSG splits
+# python data_scripts/dag/add_dag_intens.py \
+# 	--pred-dag-folder  results/dag_msg_allev/split_rnd1/preds_train_100/tree_preds.hdf5 \
+# 	--true-dag-folder data/spec_datasets/msg/subformulae/no_subform.hdf5 \
+# 	--out-dag-folder results/dag_msg_allev/split_rnd1/preds_train_100_inten.hdf5  \
+# 	--num-workers 32 \
+# 	--add-raw
+
+# python data_scripts/dag/add_dag_intens.py \
+# 	--pred-dag-folder  results/dag_msg_allev/split_rnd2/preds_train_100/tree_preds.hdf5 \
+# 	--true-dag-folder data/spec_datasets/msg/subformulae/no_subform.hdf5 \
+# 	--out-dag-folder results/dag_msg_allev/split_rnd2/preds_train_100_inten.hdf5  \
+# 	--num-workers 32 \
+# 	--add-raw
+
+# python data_scripts/dag/add_dag_intens.py \
+# 	--pred-dag-folder  results/dag_msg_allev/split_rnd3/preds_train_100/tree_preds.hdf5 \
+# 	--true-dag-folder data/spec_datasets/msg/subformulae/no_subform.hdf5 \
+# 	--out-dag-folder results/dag_msg_allev/split_rnd3/preds_train_100_inten.hdf5  \
+# 	--num-workers 32 \
+# 	--add-raw

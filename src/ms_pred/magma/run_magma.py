@@ -21,9 +21,7 @@ from rdkit import RDLogger
 import ms_pred.common as common
 import ms_pred.magma.fragmentation as fragmentation
 
-
 FRAGMENT_ENGINE_PARAMS = {"max_broken_bonds": 6, "max_tree_depth": 3}
-
 
 def greedy_prune(
     fe: fragmentation.FragmentEngine, included_nodes: list, tree_nodes: list
@@ -463,11 +461,22 @@ def run_magma_augmentation(
 
     spec_h5.close()
     logging.info('Write to hdf5 file output')
-    tsv_h5 = common.HDF5Dataset(output_dir / "magma_tsv.hdf5", mode='w')
-    tree_h5 = common.HDF5Dataset(output_dir / "magma_tree.hdf5", mode='w')
-    for obj in tqdm(write_objs):
-        tsv_h5.write_dict(obj[0])
-        tree_h5.write_dict(obj[1])
+    tsv_h5 = common.HDF5Dataset(output_dir / "magma_tsv_new.hdf5", mode='w')
+    tree_h5 = common.HDF5Dataset(output_dir / "magma_tree_new.hdf5", mode='w')
+    for i, obj in tqdm(enumerate(write_objs), total=len(write_objs)):
+        try:
+            tsv_h5.write_dict(obj[0])
+            tree_h5.write_dict(obj[1])
+            if i % 100 == 0:
+                tsv_h5.flush()
+                tree_h5.flush()
+        except Exception as e:
+            logging.error(f"Error writing file {i}: {params[i]}")
+            # try writing to file instead
+            import pickle
+            with open(output_dir / f"new_error_{i}.pkl", 'wb') as f:
+                pickle.dump(obj, f)
+            continue
     tsv_h5.close()
     tree_h5.close()
 

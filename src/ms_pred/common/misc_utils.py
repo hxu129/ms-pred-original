@@ -289,65 +289,7 @@ def spec_to_ms_str(
 def parse_spectra_mgf(
     mgf_file: str, max_num = None
 ) -> List[Tuple[dict, List[Tuple[str, np.ndarray]]]]:
-    """parse_spectr_mgf.
-
-    Parses spectra in the MGF file formate, with
-
-    Args:
-        mgf_file (str) : str
-        max_num (Optional[int]): If set, only parse this many
-    Return:
-        List[Tuple[dict, List[Tuple[str, np.ndarray]]]]: metadata and list of spectra
-            tuples containing name and array
-    """
-
-    key = lambda x: x.strip() == "BEGIN IONS"
-    parsed_spectra = []
-    with open(mgf_file, "r") as fp:
-
-        for (is_header, group) in tqdm(groupby(fp, key)):
-
-            if is_header:
-                continue
-
-            meta = dict()
-            spectra = []
-            # Note: Sometimes we have multiple scans
-            # This mgf has them collapsed
-            cur_spectra_name = "spec"
-            cur_spectra = []
-            group = list(group)
-            for line in group:
-                line = line.strip()
-                if not line:
-                    pass
-                elif line == "END IONS" or line == "BEGIN IONS":
-                    pass
-                elif "=" in line:
-                    k, v = [i.strip() for i in line.split("=", 1)]
-                    meta[k] = v
-                else:
-                    mz, intens = line.split()
-                    cur_spectra.append((float(mz), float(intens)))
-
-            if len(cur_spectra) > 0:
-                cur_spectra = np.vstack(cur_spectra)
-                spectra.append((cur_spectra_name, cur_spectra))
-                parsed_spectra.append((meta, spectra))
-            else:
-                pass
-                # print("no spectra found for group: ", "".join(group))
-
-            if max_num is not None and len(parsed_spectra) > max_num:
-                # print("Breaking")
-                break
-        return parsed_spectra
-
-
-def parse_spectra_mgf(
-    mgf_file: str, max_num = None
-) -> List[Tuple[dict, List[Tuple[str, np.ndarray]]]]:
-    """parse_spectr_mgf.
+    """parse_spectra_mgf.
 
     Parses spectra in the MGF file formate, with
 
