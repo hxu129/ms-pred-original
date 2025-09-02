@@ -787,11 +787,9 @@ class IntenGNN(pl.LightningModule):
                 "contr_loss": contr_loss,
                 "loss": spec_loss + contr_loss * self.contr_weight,
             }
-            # TODO: track cosine loss if desired
         else:
             loss = loss_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])
             if self.track_cosine:
-                
                 cosine_loss_val = cosine_fn(pred_inten, batch["inten_targs"], parent_mass=batch["precursor_mzs"])['loss']
 
         loss = {k: v.mean() for k, v in loss.items()}

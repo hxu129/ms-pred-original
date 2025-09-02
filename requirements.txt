@@ -5,9 +5,7 @@ CairoSVG
 ipdb
 omegaconf
 pubchempy
-pymoo
 pygmtools
 h5py
 msbuddy
 lightgbm
-

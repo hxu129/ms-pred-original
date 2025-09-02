@@ -15,8 +15,6 @@ import ms_pred.magma.fragmentation as fragmentation
 import ms_pred.magma.run_magma as magma
 import ms_pred.dag_pred.dag_data as dag_data
 
-import time
-
 
 class FragGNN(pl.LightningModule):
     def __init__(
@@ -781,7 +779,6 @@ class FragGNN(pl.LightningModule):
             "name": data["name"],
             "frags": frag_hash_to_entry,
             "collision_energy": data["collision_energy"],
-            # "instrument": data["instrument"], # TODO: not sure if this will break things/if ne
         }
         output = json.dumps(output, indent=2)
 

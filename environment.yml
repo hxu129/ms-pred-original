@@ -5,7 +5,6 @@ channels:
 - conda-forge
 - pyg
 - bioconda
-- bioconda
 dependencies:
 - python=3.8.*
 - cython

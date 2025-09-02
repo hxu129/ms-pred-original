@@ -283,7 +283,7 @@ def iceberg_prediction(
                --save-dir {save_dir} \\
                --adduct-shift''')
         if cuda_devices:
-            cmd = f'CUDA_VISIBLE_DEVICES={cuda_devices} ' + cmd + ' \\\n           --gpu'
+            cmd = f'CUDA_VISIBLE_DEVICES={cuda_devices} ' + cmd + ' \\\n               --gpu'
         assert not binned_out, 'Elucidation not supported for binned_out=True'
         if binned_out:
             cmd += ' \\           --binned_out'
@@ -335,16 +335,13 @@ def load_real_spec(
 
     # denoise spectrum (thresholding)
     if denoise_spectrum:
-        # real_spec = [(k, common.max_inten_spec(v, max_num_inten=20, inten_thresh=intensity_threshold)) for k, v in real_spec]
-        # real_spec = [(k, common.combined_electronic_denoising(v)) for k, v in real_spec]
-        real_spec = list(common.denoise_spectra_dict(dict(real_spec)).items())
-        # pass
-        
+        real_spec = [(k, common.max_inten_spec(v, max_num_inten=20, inten_thresh=intensity_threshold)) for k, v in real_spec]
+        real_spec = [(k, common.combined_electronic_denoising(v)) for k, v in real_spec]
+        # real_spec = list(common.denoise_spectra_dict(dict(real_spec)).items())
+
     real_spec = common.process_spec_file(meta, real_spec, merge_specs=False)
     # round collision energy to integer
-    
     real_spec = {float(common.get_collision_energy(k)): v for k, v in real_spec.items()}
-    print(real_spec.keys())
     if nce:
         real_spec = {common.nce_to_ev(k, precursor_mass): v for k, v in real_spec.items()}
     real_spec = {f'{float(k):.0f}': v for k, v in real_spec.items()}
@@ -387,9 +384,9 @@ def load_pred_spec(
                 frag_dict[collision_eng_key] = json.loads(collision_eng_obj['frag'][0])
 
             if denoise_spectrum:
-                # spec_dict = common.denoise_spectra_dict(spec_dict)
                 spec = [(k, common.max_inten_spec(v, max_num_inten=20, inten_thresh=0.05)) for k, v in spec_dict.items()]
                 spec_dict = dict([(k, common.combined_electronic_denoising(v)) for k, v in spec])
+                # spec_dict = common.denoise_spectra_dict(spec_dict)
 
             if merge_spec:
                 mz_frag_to_tup = {}
