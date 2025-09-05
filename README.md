@@ -46,6 +46,7 @@ python3 setup.py develop
 If you have CUDA12 drivers and wish to use a python3.11 environment, the pyproject.toml file should provide rapid installation with `uv`:
 ```
 mamba env create -n ms-gen python=3.11
+mamba activate ms-gen
 uv pip install -e ./
 ```
 
