@@ -42,6 +42,13 @@ mamba activate ms-gen
 pip install -r requirements.txt
 python3 setup.py develop
 ```
+
+If you have CUDA12 drivers and wish to use a python3.11 environment, the pyproject.toml file should provide rapid installation with `uv`:
+```
+mamba env create -n ms-gen python=3.11
+uv pip install -e ./
+```
+
 Installation will take ~5 minutes.
 
 Note: if you are not using GPU, please comment the CUDA-based packages in ``envorinment.yaml``.
