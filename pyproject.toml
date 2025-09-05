@@ -25,7 +25,7 @@ dependencies = [
     "msbuddy>=0.3.12",
     "omegaconf>=2.3.0",
     "pathos>=0.3.4",
-    "pip>=25.2",
+    "pip",
     "pubchempy>=1.0.4",
     "pygmtools @ git+https://github.com/Thinklab-SJTU/pygmtools.git",
     "pytorch-lightning>=2.5.4",
