@@ -3,11 +3,12 @@ name = "ms-gen"
 version = "0.1.0"
 description = "A package for computational tandem mass spectrometry simulation."
 authors = [
-    { name = "Sam Goldman", email = "samlg@.mit.edu"},
-    { name = "Runzhong Wang", email = "rwang@.mit.edu"},
+    { name = "Sam Goldman", email = "samlg@mit.edu"},
+    { name = "Runzhong Wang", email = "rwang@mit.edu"},
     { name = "Mrunali Manjrekar", email = "mrunali@mit.edu" },
 ]
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
     "torch==2.4.0",         

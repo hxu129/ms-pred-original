@@ -45,14 +45,14 @@ python3 setup.py develop
 
 If you have CUDA12 drivers and wish to use a python3.11 environment, the pyproject.toml file should provide rapid installation with `uv`:
 ```
-mamba env create -n ms-gen python=3.11
+mamba create -n ms-gen python=3.10
 mamba activate ms-gen
 uv pip install -e ./
 ```
 
 Installation will take ~5 minutes.
 
-Note: if you are not using GPU, please comment the CUDA-based packages in ``envorinment.yaml``.
+Note: if you are not using GPU, please comment the CUDA-based packages in ``environment.yaml``.
 
 ## Demo <a name="demo"></a>
 A demo of how to use mass spectrum predictors (ICEBERG as an example) for structural elucidation campaigns can be found at [``notebooks/iceberg_2025_biorxiv/iceberg_demo_pubchem_elucidation.ipynb``](notebooks/iceberg_2025_biorxiv/iceberg_demo_pubchem_elucidation.ipynb).
