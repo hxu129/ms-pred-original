@@ -8,7 +8,7 @@ authors = [
     { name = "Mrunali Manjrekar", email = "mrunali@mit.edu" },
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "torch==2.4.0",         
     "torchvision==0.19.0",
@@ -28,7 +28,6 @@ dependencies = [
     "pip>=25.2",
     "pubchempy>=1.0.4",
     "pygmtools @ git+https://github.com/Thinklab-SJTU/pygmtools.git",
-    "pymoo>=0.6.1.5",
     "pytorch-lightning>=2.5.4",
     "ray[tune]>=2.49.1",
     "rdkit>=2025.3.5",
@@ -36,13 +35,13 @@ dependencies = [
     "seaborn>=0.13.2",
     "setuptools>=80.9.0",
     # If these URLs break (Python / CUDA / Torch version mismatch), update cp tag & version accordingly.
-    "torch-scatter @ https://data.pyg.org/whl/torch-2.4.0%2Bcu121/torch_scatter-2.1.2+pt24cu121-cp311-cp311-linux_x86_64.whl",
-    "torch-sparse  @ https://data.pyg.org/whl/torch-2.4.0%2Bcu121/torch_sparse-0.6.18+pt24cu121-cp311-cp311-linux_x86_64.whl",
+    "torch-scatter @ https://data.pyg.org/whl/torch-2.4.0%2Bcu121/torch_scatter-2.1.2+pt24cu121-cp310-cp310-linux_x86_64.whl",
+    "torch-sparse  @ https://data.pyg.org/whl/torch-2.4.0%2Bcu121/torch_sparse-0.6.18+pt24cu121-cp310-cp310-linux_x86_64.whl",
 ]
 
 [tool.uv.sources]
 pygmtools = { git = "https://github.com/Thinklab-SJTU/pygmtools.git" }
-dgl = { url = "https://data.dgl.ai/wheels/torch-2.1/cu121/dgl-2.4.0%2Bcu121-cp311-cp311-manylinux1_x86_64.whl" }
+dgl = { url = "https://data.dgl.ai/wheels/torch-2.1/cu121/dgl-2.4.0%2Bcu121-cp310-cp310-manylinux1_x86_64.whl" }
 
 [tool.uv]
 find-links = ["https://data.pyg.org/whl/torch-2.4.0+cu121.html", "https://data.pyg.org/whl/torch-2.4.0+cpu.html"]
