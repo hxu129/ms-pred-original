@@ -270,7 +270,7 @@ def train_model():
 
         checkpoint_callback = trainer.checkpoint_callback
         test_checkpoint = checkpoint_callback.best_model_path
-        test_checkpoint_score = checkpoint_callback.best_model_score.item()
+        test_checkpoint_score = checkpoint_callback.best_model_score
     else:
         test_checkpoint = kwargs["test_checkpoint"]
         test_checkpoint_score = "[unknown]"
