@@ -1,0 +1,42 @@
+name: unified-ms-env
+channels:
+  - conda-forge
+  - pytorch
+  - bioconda
+dependencies:
+  # Python version (DiffMS requirement, backward compatible for ms-pred)
+  - python=3.9.*
+  
+  # RDKit (DiffMS version, backward compatible from ms-pred's 2021.03)
+  - rdkit=2024.09.4
+  
+  # Core scientific computing packages
+  - numpy=1.23.*
+  - pandas=1.4.*
+  - matplotlib=3.7.1
+  - seaborn
+  
+  # Cython (required for ms-pred setup.py)
+  - cython
+  
+  # Notebook and development tools
+  - ipykernel=6.0.*
+  - nb_conda_kernels=2.3.*
+  - ipdb
+  
+  # Visualization tools (from ms-pred)
+  - conda-forge::python-graphviz=0.17
+  - conda-forge::pygraphviz=1.7
+  
+  # Other utilities
+  - einops
+  - h5py
+  - scikit-learn
+  - setuptools=68.0.0
+  
+  # Ray for hyperparameter tuning (ms-pred)
+  - ray-tune
+  
+  # MKL for performance
+  - MKL=2024.0.0
+

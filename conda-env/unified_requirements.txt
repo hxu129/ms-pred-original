@@ -1,0 +1,24 @@
+# PyTorch and related packages (CUDA 11.8)
+# These will be installed separately with specific commands
+
+# PyTorch Lightning ecosystem
+pytorch-lightning==2.0.4
+torchmetrics==0.11.4
+
+# DiffMS dependencies
+hydra-core==1.3.2
+omegaconf==2.3.0
+overrides==7.3.1
+tqdm
+wandb
+myopic-mces
+tqdm-joblib
+
+# ms-pred dependencies
+pathos
+CairoSVG
+pubchempy
+pygmtools
+msbuddy
+lightgbm
+
