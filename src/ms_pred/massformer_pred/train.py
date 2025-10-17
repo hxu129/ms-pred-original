@@ -87,7 +87,7 @@ def train_model():
     common.setup_logger(
         save_dir, log_name="massformer_train.log", debug=kwargs["debug"]
     )
-    pl.seed_everything(kwargs.get("seed"))
+    pl.utilities.seed.seed_everything(kwargs.get("seed"))
 
     # Dump args
     yaml_args = yaml.dump(kwargs)
@@ -217,7 +217,7 @@ def train_model():
     trainer = pl.Trainer(
         logger=[tb_logger, console_logger],
         accelerator="gpu" if kwargs["gpu"] else "cpu",
-        devices=1 if kwargs["gpu"] else 0,
+        gpus=1 if kwargs["gpu"] else 0,
         callbacks=callbacks,
         gradient_clip_val=5,
         min_epochs=kwargs["min_epochs"],
@@ -232,7 +232,7 @@ def train_model():
 
     checkpoint_callback = trainer.checkpoint_callback
     best_checkpoint = checkpoint_callback.best_model_path
-    best_checkpoint_score = checkpoint_callback.best_model_score
+    best_checkpoint_score = checkpoint_callback.best_model_score.item()
 
     # Load from checkpoint
     model = massformer_model.MassFormer.load_from_checkpoint(best_checkpoint)

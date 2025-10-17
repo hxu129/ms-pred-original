@@ -286,7 +286,7 @@ def train_model():
 
     checkpoint_callback = trainer.checkpoint_callback
     best_checkpoint = checkpoint_callback.best_model_path
-    best_checkpoint_score = checkpoint_callback.best_model_score
+    best_checkpoint_score = checkpoint_callback.best_model_score.item()
 
     # Load from checkpoint
     model = autoregr_model.AutoregrNet.load_from_checkpoint(best_checkpoint)
