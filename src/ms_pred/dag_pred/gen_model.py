@@ -204,6 +204,16 @@ class FragGNN(pl.LightningModule):
         Returns:
             _type_: _description_
         """
+        # move everything to the same device
+        device = self.adduct_embedder.device
+        graphs = graphs.to(device)
+        ind_maps = ind_maps.to(device)
+        broken = broken.to(device)
+        adducts = adducts.to(device).long()
+        root_forms = root_forms.to(device)
+        frag_forms = frag_forms.to(device)
+        root_repr = root_repr.to(device)
+        
         embed_adducts = self.adduct_embedder[adducts.long()]
         if self.root_encode == "fp":
             root_embeddings = self.root_module(root_repr)
@@ -381,9 +391,9 @@ class FragGNN(pl.LightningModule):
         max_depth = engine.max_tree_depth
         root_frag = engine.get_root_frag()
         root_form = common.form_from_smi(root_smi)
-        root_form_vec = torch.FloatTensor(common.formula_to_dense(root_form))
+        root_form_vec = torch.FloatTensor(common.formula_to_dense(root_form)).to(device)
         root_form_vec = root_form_vec.reshape(1, -1)
-        adducts = torch.LongTensor([common.ion2onehot_pos[adduct]])
+        adducts = torch.LongTensor([common.ion2onehot_pos[adduct]]).to(device)
 
         # Step 2: Featurize the root molecule
         root_graph_dict = self.tree_processor.featurize_frag(
@@ -452,7 +462,7 @@ class FragGNN(pl.LightningModule):
                 mol_batch_graph = [i["graph"] for i in new_dgl_dicts]
                 frag_forms = [i["form"] for i in new_dgl_dicts]
                 frag_form_vecs = [common.formula_to_dense(i) for i in frag_forms]
-                frag_form_vecs = torch.FloatTensor(np.array(frag_form_vecs))
+                frag_form_vecs = torch.FloatTensor(np.array(frag_form_vecs)).to(device)
 
                 new_frag_hashes = [engine.wl_hash(i) for i in stack]
 

@@ -279,7 +279,7 @@ def train_model():
 
     checkpoint_callback = trainer.checkpoint_callback
     best_checkpoint = checkpoint_callback.best_model_path
-    best_checkpoint_score = checkpoint_callback.best_model_score.item()
+    best_checkpoint_score = checkpoint_callback.best_model_score
 
     # Load from checkpoint
     model = scarf_model.ScarfNet.load_from_checkpoint(best_checkpoint)

@@ -45,16 +45,17 @@ class JointModel(pl.LightningModule):
         )
 
     @classmethod
-    def from_checkpoints(cls, gen_checkpoint, inten_checkpoint):
+    def from_checkpoints(cls, gen_checkpoint, inten_checkpoint, map_location="cpu"):
         """from_checkpoints.
 
         Args:
-            gen_checkpoint
-            inten_checkpoint
+            gen_checkpoint: Path to generation model checkpoint
+            inten_checkpoint: Path to intensity model checkpoint
+            map_location: Device to load models to (default: "cpu")
         """
 
-        gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint)
-        inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint)
+        gen_model_obj = gen_model.FragGNN.load_from_checkpoint(gen_checkpoint, map_location=map_location)
+        inten_model_obj = inten_model.IntenGNN.load_from_checkpoint(inten_checkpoint, map_location=map_location)
         return cls(gen_model_obj, inten_model_obj)
 
     def predict_mol(

@@ -789,7 +789,17 @@ def random_walk_pe(g, k, eweight_name=None):
     """
     N = g.num_nodes()  # number of nodes
     M = g.num_edges()  # number of edges
-    A = g.adj(scipy_fmt="csr")  # adjacency matrix
+    # DGL 2.x changed the API for getting adjacency matrix
+    try:
+        # DGL 2.x: use adj_external or adj_sparse
+        A = g.adj_external(scipy_fmt="csr")
+    except (AttributeError, TypeError):
+        try:
+            # Alternative DGL 2.x API
+            A = g.adj_sparse("csr")
+        except (AttributeError, TypeError):
+            # Fallback to old DGL API (won't work in DGL 2.x)
+            A = g.adj(scipy_fmt="csr")
     if eweight_name is not None:
         # add edge weights if required
         W = sparse.csr_matrix(
@@ -797,14 +807,16 @@ def random_walk_pe(g, k, eweight_name=None):
             shape=(N, N),
         )
         A = A.multiply(W)
-    RW = np.array(A / (A.sum(1) + 1e-30))  # 1-step transition probability
+    # Convert sparse matrix to dense numpy array for random walk computation
+    RW = A / (A.sum(1) + 1e-30)  # 1-step transition probability
+    RW = np.asarray(RW.todense())  # Convert to dense 2D numpy array
 
     # Iterate for k steps
-    PE = [dgl_F.astype(dgl_F.tensor(RW.diagonal()), torch.float32)]
+    PE = [dgl_F.astype(dgl_F.tensor(np.diag(RW)), torch.float32)]
     RW_power = RW
     for _ in range(k - 1):
         RW_power = RW_power @ RW
-        PE.append(dgl_F.astype(dgl_F.tensor(RW_power.diagonal()), torch.float32))
+        PE.append(dgl_F.astype(dgl_F.tensor(np.diag(RW_power)), torch.float32))
     PE = dgl_F.stack(PE, dim=-1)
     return PE
 

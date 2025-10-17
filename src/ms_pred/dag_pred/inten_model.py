@@ -317,7 +317,20 @@ class IntenGNN(pl.LightningModule):
         Returns:
             _type_: _description_
         """
+        # move everything to the same device
         device = num_frags.device
+        assert device == self.adduct_embedder.device, "Device mismatch"
+        graphs = graphs.to(device)
+        root_repr = root_repr.to(device)
+        ind_maps = ind_maps.to(device)
+        num_frags = num_frags.to(device)
+        broken = broken.to(device)
+        adducts = adducts.to(device).long()
+        max_add_hs = max_add_hs.to(device) if max_add_hs is not None else None
+        max_remove_hs = max_remove_hs.to(device) if max_remove_hs is not None else None
+        masses = masses.to(device) if masses is not None else None
+        root_forms = root_forms.to(device) if root_forms is not None else None
+        frag_forms = frag_forms.to(device) if frag_forms is not None else None
 
         # if root fingerprints:
         embed_adducts = self.adduct_embedder[adducts.long()]
