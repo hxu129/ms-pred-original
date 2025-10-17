@@ -356,3 +356,76 @@ In addition, we utilize both the NEIMS approach for our binned FFN and GNN encod
 4. Hong, Yuhui, et al. "3DMolMS: Prediction of Tandem Mass Spectra from Three Dimensional Molecular Conformations." bioRxiv (2023): 2023-03.
 5. Murphy, Michael, et al. "Efficiently predicting high resolution mass spectra with graph neural networks." arXiv preprint arXiv:2301.11419 (2023).
 6. Young, Adamo, Bo Wang, and Hannes Röst. "MassFormer: Tandem mass spectrum prediction with graph transformers." arXiv preprint arXiv:2111.04824 (2021). 
+
+## Detailed Guide for Reproducing ICEBERG Statistics on NPLIB1 Dataset
+
+### Environment Setup
+1. **Activate Conda Environment**
+   ```bash
+   source ~/miniforge3/etc/profile.d/conda.sh
+   conda activate unified-ms-env
+   ```
+
+### Data Preparation
+2. **Download the NPLIB1 (canopus_train_public) Dataset**
+   This dataset is required for reproducing ICEBERG metrics.
+   ```bash
+   cd /root/ms/ms-pred
+   bash data_scripts/download_gnps.sh
+   ```
+   The data will be placed in `data/spec_datasets/canopus_train_public/`
+
+### Model Predictions
+3. **Run ICEBERG Predictions on Test Set**
+   Use the pretrained models to make predictions on the test set and obtain binned outputs.
+   ```bash
+   python src/ms_pred/dag_pred/predict_smis.py \
+       --batch-size 32 \
+       --max-nodes 100 \
+       --gen-checkpoint quickstart/iceberg/models/canopus_iceberg_generate.ckpt \
+       --inten-checkpoint quickstart/iceberg/models/canopus_iceberg_score.ckpt \
+       --save-dir results/iceberg_eval_canopus \
+       --dataset-name canopus_train_public \
+       --split-name split_1.tsv \
+       --subset-datasets test_only \
+       --num-workers 0 \
+       --binned-out
+   ```
+
+### Evaluation
+4. **Evaluate Cosine Similarity, Coverage, and Validity**
+   Evaluate the predicted results to measure key metrics and verify performance.
+   ```bash
+   python analysis/spec_pred_eval.py \
+       --binned-pred-file results/iceberg_eval_canopus/binned_preds.p \
+       --dataset canopus_train_public \
+       --formula-dir-name no_subform \
+       --max-peaks 100 \
+       --min-inten 0
+   ```
+   Find results in `results/iceberg_eval_canopus/pred_eval.yaml`
+
+### Retrieval Evaluation
+5. **Run Top-k Retrieval Evaluation**
+   To determine retrieval accuracy using the retrieval dataset and evaluate top-k performance.
+   ```bash
+   python src/ms_pred/dag_pred/predict_smis.py \
+       --batch-size 64 \
+       --max-nodes 100 \
+       --gen-checkpoint quickstart/iceberg/models/canopus_iceberg_generate.ckpt \
+       --inten-checkpoint quickstart/iceberg/models/canopus_iceberg_score.ckpt \
+       --save-dir results/iceberg_retrieval_canopus \
+       --dataset-labels data/spec_datasets/canopus_train_public/retrieval/cands_df_split_1_50.tsv \
+       --num-workers 0 \
+       --sparse-out \
+       --sparse-k 100
+   ```
+   Evaluate these using:
+   ```bash
+   python src/ms_pred/retrieval/retrieval_binned.py \
+       --pred-spec results/iceberg_retrieval_canopus/sparse_preds.p \
+       --dataset-name canopus_train_public \
+       --dist cos
+   ```
+
+Following these procedures will allow for reproduction of the main metrics as reported in the papers. Make sure that conda environment `unified-ms-env` is always activated before execution. 
