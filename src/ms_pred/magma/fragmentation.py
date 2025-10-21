@@ -6,7 +6,7 @@ Fragment a molecule combinatorially by pulling atoms
 import numpy as np
 from collections import Counter, defaultdict
 from hashlib import blake2b
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from rdkit import Chem
 from ms_pred import common
 
@@ -30,6 +30,7 @@ class FragmentEngine(object):
     def __init__(
         self,
         mol_str: str,
+        root_mol: Optional[Chem.Mol] = None,
         max_tree_depth: int = 3,
         max_broken_bonds: int = 6,
         mol_str_type: str = "smiles",
@@ -46,25 +47,19 @@ class FragmentEngine(object):
         # Standardize mol by roundtripping it
         if mol_str_type == "smiles":
             self.smiles = mol_str
-            self.mol = Chem.MolFromSmiles(self.smiles)
+            if root_mol is not None:
+                self.mol = root_mol
+            else:
+                self.mol = Chem.MolFromSmiles(self.smiles)
             if self.mol is None:
                 return
-            self.inchi = Chem.MolToInchi(self.mol)
-            self.mol = Chem.MolFromInchi(self.inchi)
-
-        elif mol_str_type == "inchi":
-            self.inchi = mol_str
-            self.mol = Chem.MolFromInchi(self.inchi)
-            if self.mol is None:
-                return
-            self.smiles = Chem.MolToSmiles(self.mol)
         else:
             raise NotImplementedError()
 
         self.natoms = self.mol.GetNumAtoms()
 
         # Kekulize the molecule
-        Chem.Kekulize(self.mol, clearAromaticFlags=True)
+        Chem.KekulizeIfPossible(self.mol, clearAromaticFlags=True)
 
         # Calculate number of hs on each atom and masses
         self.atom_symbols = [i.GetSymbol() for i in self.mol.GetAtoms()]

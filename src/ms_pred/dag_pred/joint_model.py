@@ -2,6 +2,7 @@
 from collections import defaultdict
 import numpy as np
 import pytorch_lightning as pl
+from rdkit import Chem
 
 import ms_pred.common as common
 import ms_pred.magma.fragmentation as fragmentation
@@ -60,6 +61,7 @@ class JointModel(pl.LightningModule):
 
     def predict_mol(
         self,
+        mol: Chem.Mol,
         smi: str,
         adduct: str,
         threshold: float,
@@ -84,9 +86,11 @@ class JointModel(pl.LightningModule):
         # Run tree gen model
         # Defines exact tree
         root_smi = smi
+        root_mol = mol
         root_inchi = common.inchi_from_smiles(root_smi)
 
         frag_tree = self.gen_model_obj.predict_mol(
+            root_mol=root_mol,
             root_smi=root_smi,
             adduct=adduct,
             threshold=threshold,

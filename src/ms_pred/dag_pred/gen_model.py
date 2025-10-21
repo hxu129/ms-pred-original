@@ -13,6 +13,8 @@ import ms_pred.magma.fragmentation as fragmentation
 import ms_pred.magma.run_magma as magma
 import ms_pred.dag_pred.dag_data as dag_data
 
+from rdkit import Chem
+
 
 class FragGNN(pl.LightningModule):
     def __init__(
@@ -363,6 +365,7 @@ class FragGNN(pl.LightningModule):
 
     def predict_mol(
         self,
+        root_mol: Chem.Mol,
         root_smi: str,
         adduct,
         threshold=0,
@@ -387,7 +390,7 @@ class FragGNN(pl.LightningModule):
             Dictionary containing results
         """
         # Step 1: Get a fragmentation engine for root mol
-        engine = fragmentation.FragmentEngine(root_smi)
+        engine = fragmentation.FragmentEngine(root_smi, root_mol=root_mol)
         max_depth = engine.max_tree_depth
         root_frag = engine.get_root_frag()
         root_form = common.form_from_smi(root_smi)
