@@ -18,7 +18,7 @@ TYPEW = {
     Chem.rdchem.BondType.names["SINGLE"]: 1,
 }
 MAX_BONDS = max(list(TYPEW.values())) + 1
-MAX_ATOM_BONDS = 6
+MAX_ATOM_BONDS = 100
 
 # CC bonds are strongest --> higher score = harder to break
 HETEROW = {False: 2, True: 1}
@@ -53,8 +53,19 @@ class FragmentEngine(object):
                 self.mol = Chem.MolFromSmiles(self.smiles)
             if self.mol is None:
                 return
+        elif mol_str_type == "inchi":
+            self.inchi = mol_str
+            if root_mol is not None:
+                self.mol = root_mol
+            else:
+                self.mol = Chem.MolFromInchi(self.inchi)
+            if self.mol is None:
+                return
+            self.smiles = Chem.MolToSmiles(self.mol)
         else:
             raise NotImplementedError()
+
+
 
         self.natoms = self.mol.GetNumAtoms()
 
@@ -98,7 +109,6 @@ class FragmentEngine(object):
             a1, a2 = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
             self.bonded_atoms[a1].append(a2)
             self.bonded_atoms[a2].append(a1)
-
             self.bonded_atoms_np[a1, self.num_bonds_np[a1]] = a2
             self.bonded_atoms_np[a2, self.num_bonds_np[a2]] = a1
 

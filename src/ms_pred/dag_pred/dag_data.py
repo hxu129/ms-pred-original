@@ -120,7 +120,9 @@ class TreeProcessor:
             last_row:
         """
         root_inchi = tree["root_inchi"]
-        engine = fragmentation.FragmentEngine(mol_str=root_inchi, mol_str_type="inchi")
+        root_smi = tree["root_smi"]
+        root_mol = tree["root_mol"]
+        engine = fragmentation.FragmentEngine(mol_str=root_smi, root_mol=root_mol, mol_str_type="smiles")
         # bottom_depth = engine.max_broken_bonds
         bottom_depth = engine.max_tree_depth
         if self.root_encode == "gnn":
@@ -131,11 +133,11 @@ class TreeProcessor:
             )
             root_repr = root_graph_dict["graph"]
         elif self.root_encode == "fp":
-            root_repr = common.get_morgan_fp_inchi(root_inchi)
+            root_repr = common.get_morgan_fp_mol(root_mol)
         else:
             raise ValueError()
 
-        root_form = common.form_from_inchi(root_inchi)
+        root_form = common.uncharged_formula(root_mol, mol_type="mol")
 
         # Need to include mass and inten targets here, maybe not necessary in
         # all cases?

@@ -97,10 +97,10 @@ class JointModel(pl.LightningModule):
             device=device,
             max_nodes=max_nodes,
         )
-        frag_tree = {"root_inchi": root_inchi, "name": "", "frags": frag_tree}
+        frag_tree = {"root_inchi": root_inchi, "root_smi": root_smi, "root_mol": root_mol, "name": "", "frags": frag_tree}
 
         # Get engine from fragmentation for this inchi
-        engine = fragmentation.FragmentEngine(mol_str=root_inchi, mol_str_type="inchi")
+        engine = fragmentation.FragmentEngine(mol_str=smi, root_mol=root_mol, mol_str_type="smiles")
 
         processed_tree = self.inten_tp.process_tree_inten_pred(frag_tree)
 

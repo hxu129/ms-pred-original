@@ -33,6 +33,8 @@ def get_morgan_fp_wt(mol: Chem.Mol, nbits: int = 2048, radius=3) -> np.ndarray:
     DataStructs.ConvertToNumpyArray(curr_fp, fingerprint)
     return fingerprint, weight
 
+def get_morgan_fp_mol(mol: Chem.Mol, nbits: int = 2048, radius=3) -> np.ndarray:
+    return get_morgan_fp(mol, nbits=nbits, radius=radius)
 
 def get_morgan_fp_smi(smi: str, nbits: int = 2048, radius=3) -> np.ndarray:
     return get_morgan_fp(Chem.MolFromSmiles(smi), nbits=nbits, radius=radius)

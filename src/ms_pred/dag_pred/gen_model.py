@@ -393,7 +393,7 @@ class FragGNN(pl.LightningModule):
         engine = fragmentation.FragmentEngine(root_smi, root_mol=root_mol)
         max_depth = engine.max_tree_depth
         root_frag = engine.get_root_frag()
-        root_form = common.form_from_smi(root_smi)
+        root_form = common.uncharged_formula(root_mol, mol_type="mol")
         root_form_vec = torch.FloatTensor(common.formula_to_dense(root_form)).to(device)
         root_form_vec = root_form_vec.reshape(1, -1)
         adducts = torch.LongTensor([common.ion2onehot_pos[adduct]]).to(device)
