@@ -279,7 +279,7 @@ class JointModel(pl.LightningModule):
         logging.info(f"Using {num_workers} CPU workers for parallel fragmentation tree generation")
         
         # Step 1: Generate fragmentation trees in parallel on CPU
-        curr_time = time.time()
+        # curr_time = time.time()
         
         # Create CPU copy of gen_model for workers
         # NOTE: Each worker will get a copy via serialization
@@ -297,12 +297,12 @@ class JointModel(pl.LightningModule):
         out_trees = []
         
         # Use spawn method to avoid CUDA fork issues
-        curr_time = time.time()
+        # curr_time = time.time()
         ctx = mp.get_context('spawn')
         with ctx.Pool(processes=num_workers) as pool:
             results = pool.map(JointModel._process_single_molecule_worker, worker_args)
 
-        logging.info(f"Fragmentation tree processing time (parallel): {time.time() - curr_time:.2f} seconds")
+        # logging.info(f"Fragmentation tree processing time (parallel): {time.time() - curr_time:.2f} seconds")
         # Move gen_model back to target device
         # self.gen_model_obj.to(device)
 
@@ -314,7 +314,7 @@ class JointModel(pl.LightningModule):
                 processed_trees.append(processed_dgl)
                 out_trees.append(out_tree)
         
-        logging.info(f"Fragmentation tree processing time (parallel): {time.time() - curr_time:.2f} seconds")
+        # logging.info(f"Fragmentation tree processing time (parallel): {time.time() - curr_time:.2f} seconds")
         
         if len(processed_trees) == 0:
             return []
@@ -338,7 +338,7 @@ class JointModel(pl.LightningModule):
         frag_forms = safe_device(batch["frag_form_vecs"])
         
         # Step 3: Run batched intensity prediction on GPU (KEY OPTIMIZATION!)
-        curr_time = time.time()
+        # curr_time = time.time()
         inten_preds = self.inten_model_obj.predict(
             graphs=frag_graphs,
             root_reprs=root_reprs,
@@ -353,10 +353,10 @@ class JointModel(pl.LightningModule):
             binned_out=binned_out,
             adducts=adducts_tensor,
         )
-        logging.info(f"Intensity prediction time: {time.time() - curr_time:.2f} seconds")
+        # logging.info(f"Intensity prediction time: {time.time() - curr_time:.2f} seconds")
         
         # Step 4: Unpack batch results back to per-molecule predictions
-        curr_time = time.time()
+        # curr_time = time.time()
         outputs = []
         
         if binned_out:
@@ -387,7 +387,7 @@ class JointModel(pl.LightningModule):
                 out_tree["frags"] = out_frags
                 outputs.append(out_tree)
         
-        logging.info(f"Unpack batch results time: {time.time() - curr_time:.2f} seconds")
+        # logging.info(f"Unpack batch results time: {time.time() - curr_time:.2f} seconds")
         
         return outputs
 
@@ -435,7 +435,7 @@ class JointModel(pl.LightningModule):
         # Step 2: Process all trees and prepare for batched intensity prediction
         processed_trees = []
         out_trees = []
-        curr_time = time.time()
+        # curr_time = time.time()
         for mol, smi, adduct in zip(mol_list, smi_list, adduct_list):
             root_mol = mol
             root_smi = smi
@@ -473,7 +473,7 @@ class JointModel(pl.LightningModule):
             processed_dgl["name"] = ""
             processed_trees.append(processed_dgl)
 
-        logging.info(f"Fragmentation tree processing time: {time.time() - curr_time:.2f} seconds")
+        # logging.info(f"Fragmentation tree processing time: {time.time() - curr_time:.2f} seconds")
 
         # Step 3: Collate all processed trees into a single batch
         batch = self.inten_collate_fn(processed_trees)
@@ -494,7 +494,7 @@ class JointModel(pl.LightningModule):
         frag_forms = safe_device(batch["frag_form_vecs"])
 
         # Step 4: Run batched intensity prediction (KEY OPTIMIZATION!)
-        curr_time = time.time()
+        # curr_time = time.time()
         inten_preds = self.inten_model_obj.predict(
             graphs=frag_graphs,
             root_reprs=root_reprs,
@@ -509,11 +509,11 @@ class JointModel(pl.LightningModule):
             binned_out=binned_out,
             adducts=adducts_tensor,
         )
-        logging.info(f"Intensity prediction time: {time.time() - curr_time:.2f} seconds")
+        # logging.info(f"Intensity prediction time: {time.time() - curr_time:.2f} seconds")
 
         # Step 5: Unpack batch results back to individual predictions
         outputs = []
-        curr_time = time.time()
+        # curr_time = time.time()
         if binned_out:
             # For binned output, split the batch
             for i in range(len(mol_list)):
@@ -541,6 +541,6 @@ class JointModel(pl.LightningModule):
                 out_tree["frags"] = out_frags
                 outputs.append(out_tree)
 
-        logging.info(f"Unpack batch results time: {time.time() - curr_time:.2f} seconds")
+        # logging.info(f"Unpack batch results time: {time.time() - curr_time:.2f} seconds")
 
         return outputs
