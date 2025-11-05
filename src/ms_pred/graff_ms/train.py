@@ -231,7 +231,7 @@ def train_model():
     trainer = pl.Trainer(
         logger=[tb_logger, console_logger],
         accelerator="gpu" if kwargs["gpu"] else "cpu",
-        gpus=1 if kwargs["gpu"] else 0,
+        devices=1 if kwargs["gpu"] else 0,
         callbacks=callbacks,
         gradient_clip_val=5,
         min_epochs=kwargs["min_epochs"],
