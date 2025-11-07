@@ -214,17 +214,20 @@ class BinnedDataset(Dataset):
             x, num_bins=num_bins, upper_limit=upper_limit
         )
 
+        logging.info(f"Loading {len(spec_files)} spectrum files with {self.num_workers} workers...")
         if self.num_workers == 0:
-            spec_outputs = [wrapper_process(i) for i in spec_files]
+            spec_outputs = [wrapper_process(i) for i in tqdm(spec_files, desc="Loading spectra")]
         else:
+            # Use progress bar for better visibility
             spec_outputs = common.chunked_parallel(
                 spec_files,
                 wrapper_process,
-                chunks=100,
+                chunks=min(200, len(spec_files) // max(1, self.num_workers * 10)),  # More chunks for better progress tracking
                 max_cpu=self.num_workers,
                 timeout=4000,
                 max_retries=3,
                 use_ray=use_ray,
+                desc=f"Loading {len(spec_files)} spectra",
             )
 
         self.name_to_forms = dict(zip(self.spec_names, spec_outputs))
@@ -308,8 +311,8 @@ class BinnedDataset(Dataset):
         # frag_batch.set_n_initializer(dgl.init.zero_initializer)
         # frag_batch.set_e_initializer(dgl.init.zero_initializer)
 
-        adducts = torch.FloatTensor(adducts)
-        full_forms = torch.FloatTensor(full_forms)
+        adducts = torch.FloatTensor(np.array(adducts))
+        full_forms = torch.FloatTensor(np.array(full_forms))
 
         return_dict = {
             "spectra": spectra_tensors,

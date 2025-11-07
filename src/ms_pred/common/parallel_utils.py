@@ -50,7 +50,8 @@ def chunked_parallel(
     timeout=4000,
     max_retries=3,
     use_ray=False,
-    spawn=False
+    spawn=False,
+    desc=None
 ):
     """chunked_parallel.
 
@@ -62,6 +63,7 @@ def chunked_parallel(
         timeout: Length of timeout
         max_retries: Num times to retry this
         use_ray
+        desc: Description for progress bar (optional)
     """
     # Adding it here fixes somessetting disrupted elsewhere
 
@@ -79,15 +81,39 @@ def chunked_parallel(
         input_list[i : i + step_size] for i in range(0, len(input_list), step_size)
     ]
 
-    list_outputs = simple_parallel(
-        chunked_list,
-        batch_func,
-        max_cpu=max_cpu,
-        timeout=timeout,
-        max_retries=max_retries,
-        use_ray=use_ray,
-        spawn=spawn
-    )
+    # Process chunks with progress bar
+    if desc:
+        # Use parallel processing with progress tracking
+        import multiprocess.context as ctx
+        from pathos import multiprocessing as mp
+        if spawn:
+            ctx._force_start_method('spawn')
+        
+        cpus = min(mp.cpu_count(), max_cpu)
+        pool = mp.Pool(processes=cpus)
+        
+        # Process chunks in parallel with progress bar
+        list_outputs = []
+        results = []
+        for chunk in chunked_list:
+            results.append(pool.apply_async(batch_func, (chunk,)))
+        
+        # Collect results with progress bar
+        for result in tqdm(results, desc=desc, total=len(results)):
+            list_outputs.append(result.get(timeout=timeout))
+        
+        pool.close()
+        pool.join()
+    else:
+        list_outputs = simple_parallel(
+            chunked_list,
+            batch_func,
+            max_cpu=max_cpu,
+            timeout=timeout,
+            max_retries=max_retries,
+            use_ray=use_ray,
+            spawn=spawn
+        )
     # Unroll
     full_output = [j for i in list_outputs for j in i]
 
