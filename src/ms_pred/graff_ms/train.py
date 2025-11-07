@@ -26,6 +26,11 @@ def add_graff_ms_train_args(parser):
     parser.add_argument("--debug", default=False, action="store_true")
     parser.add_argument("--debug-overfit", default=False, action="store_true")
     parser.add_argument("--gpu", default=False, action="store_true")
+    parser.add_argument("--num-gpus", default=1, action="store", type=int, 
+                        help="Number of GPUs to use (default: 1). Use -1 for all available GPUs.")
+    parser.add_argument("--strategy", default="auto", action="store", type=str,
+                        choices=["auto", "ddp", "ddp_find_unused_parameters_true", "fsdp"],
+                        help="Distributed training strategy (default: auto)")
     parser.add_argument("--seed", default=42, action="store", type=int)
     parser.add_argument("--num-workers", default=0, action="store", type=int)
     parser.add_argument("--batch-size", default=128, action="store", type=int)
@@ -161,6 +166,7 @@ def train_model():
         collate_fn=collate_fn,
         shuffle=True,
         batch_size=kwargs["batch_size"],
+        persistent_workers=True if kwargs["num_workers"] > 0 else False,
     )
     val_loader = DataLoader(
         val_dataset,
@@ -168,6 +174,7 @@ def train_model():
         collate_fn=collate_fn,
         shuffle=False,
         batch_size=kwargs["batch_size"],
+        persistent_workers=True if kwargs["num_workers"] > 0 else False,
     )
     test_loader = DataLoader(
         test_dataset,
@@ -175,6 +182,7 @@ def train_model():
         collate_fn=collate_fn,
         shuffle=False,
         batch_size=kwargs["batch_size"],
+        persistent_workers=True if kwargs["num_workers"] > 0 else False,
     )
 
     # Define model
@@ -228,10 +236,22 @@ def train_model():
     earlystop_callback = EarlyStopping(monitor=monitor, patience=20)
     callbacks = [earlystop_callback, checkpoint_callback]
 
+    # Configure devices and strategy for multi-GPU training
+    num_gpus = kwargs.get("num_gpus", 1)
+    if kwargs["gpu"]:
+        devices = num_gpus if num_gpus > 0 else "auto"
+        accelerator = "gpu"
+        strategy = kwargs.get("strategy", "auto")
+    else:
+        devices = 0
+        accelerator = "cpu"
+        strategy = "auto"
+
     trainer = pl.Trainer(
         logger=[tb_logger, console_logger],
-        accelerator="gpu" if kwargs["gpu"] else "cpu",
-        devices=1 if kwargs["gpu"] else 0,
+        accelerator=accelerator,
+        devices=devices,
+        strategy=strategy,
         callbacks=callbacks,
         gradient_clip_val=5,
         min_epochs=kwargs["min_epochs"],

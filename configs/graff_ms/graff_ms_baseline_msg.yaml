@@ -10,6 +10,8 @@ universal_args:
     nodelist: 'node[1236]', time: '1-18:00:00'}
   debug: [false]
   gpu: [true]
+  num-gpus: [1]
+  strategy: [ddp]
 
   seed: [1]
   num-workers: [16]
