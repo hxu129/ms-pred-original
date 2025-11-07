@@ -21,7 +21,6 @@ class GraffGNN(pl.LightningModule):
         lr_decay_rate: float = 1.0,
         output_dim: int = 1000,
         upper_limit: int = 1500,
-        bin_size: float = 10.0,
         weight_decay: float = 0,
         loss_fn: str = "mse",
         mpnn_type: str = "GGNN",
@@ -56,7 +55,6 @@ class GraffGNN(pl.LightningModule):
             lr_decay_rate (float, optional): _description_. Defaults to 1.0.
             output_dim (int, optional): _description_. Defaults to 1000.
             upper_limit (int, optional): _description_. Defaults to 1500.
-            bin_size (float, optional): _description_. Defaults to 10.0.
             weight_decay (float, optional): _description_. Defaults to 0.
             loss_fn (str, optional): _description_. Defaults to "mse".
             mpnn_type (str, optional): _description_. Defaults to "GGNN".
@@ -94,7 +92,6 @@ class GraffGNN(pl.LightningModule):
         self.mpnn_type = mpnn_type
         self.output_dim = output_dim
         self.upper_limit = upper_limit
-        self.bin_size = bin_size
         self.weight_decay = weight_decay
         self.embed_adduct = embed_adduct
         adduct_shift = 0
@@ -105,9 +102,8 @@ class GraffGNN(pl.LightningModule):
             self.adduct_embedder.requires_grad = False
             adduct_shift = adduct_types
 
-        # Get bin masses - use bin_size to determine number of bins
-        num_bins_for_buckets = int(self.upper_limit / self.bin_size) + 1
-        buckets = torch.linspace(0, self.upper_limit, num_bins_for_buckets, dtype=torch.float64)
+        # Get bin masses
+        buckets = torch.DoubleTensor(np.linspace(0, 1500, 15000))
         self.inten_buckets = nn.Parameter(buckets)
         self.inten_buckets.requires_grad = False
 
@@ -177,58 +173,10 @@ class GraffGNN(pl.LightningModule):
         self.fixed_forms.data.requires_grad = False
 
     def cos_loss(self, pred, targ):
-        """Differentiable binned cosine similarity loss.
-        
-        Args:
-            pred: Predicted spectrum [batch_size, 1, num_fine_bins]
-            targ: Target spectrum [batch_size, num_fine_bins]
-        
-        Returns:
-            dict with loss
-        """
-        pred = pred[:, 0, :]  # [batch_size, num_fine_bins]
-        
-        # Rebin both spectra to coarser bins using differentiable operations
-        # pred and targ are fine-grained (e.g., 15000 bins for 1500 m/z)
-        # We want to bin to coarser resolution (e.g., 10 Da bins = 150 bins)
-        batch_size = pred.shape[0]
-        num_fine_bins = pred.shape[1]
-        num_coarse_bins = len(self.inten_buckets)
-        
-        # Create fine-grained bin centers
-        fine_bin_width = self.upper_limit / num_fine_bins
-        fine_bin_centers = torch.arange(num_fine_bins, device=pred.device, dtype=torch.float32) * fine_bin_width + fine_bin_width / 2
-        
-        # Map fine bins to coarse bins
-        # Use bucketize to find which coarse bin each fine bin belongs to
-        coarse_bin_indices = torch.bucketize(fine_bin_centers, self.inten_buckets.float(), right=False)
-        coarse_bin_indices = torch.clamp(coarse_bin_indices, 0, num_coarse_bins - 1)
-        
-        # Rebin using scatter_add (differentiable)
-        pred_rebinned = torch.zeros(batch_size, num_coarse_bins, device=pred.device, dtype=pred.dtype)
-        targ_rebinned = torch.zeros(batch_size, num_coarse_bins, device=targ.device, dtype=targ.dtype)
-        
-        # Expand coarse_bin_indices for batch dimension
-        coarse_bin_indices_expanded = coarse_bin_indices.unsqueeze(0).expand(batch_size, -1)
-        
-        # Scatter add to accumulate intensities in coarse bins
-        pred_rebinned.scatter_add_(1, coarse_bin_indices_expanded, pred)
-        targ_rebinned.scatter_add_(1, coarse_bin_indices_expanded, targ)
-        
-        # Compute cosine similarity on rebinned spectra
-        # cosine_sim = dot(pred, targ) / (||pred|| * ||targ||)
-        dot_product = torch.sum(pred_rebinned * targ_rebinned, dim=1)
-        pred_norm = torch.norm(pred_rebinned, dim=1)
-        targ_norm = torch.norm(targ_rebinned, dim=1)
-        
-        # Add small epsilon to avoid division by zero
-        eps = 1e-8
-        cosine_sim = dot_product / (pred_norm * targ_norm + eps)
-        
-        # Loss is 1 - cosine_similarity
-        loss = 1 - cosine_sim
+        """loss_fn."""
+        pred = pred[:, 0, :]
+        loss = 1 - self.cos_fn(pred, targ)
         loss = loss.mean()
-        
         return {"loss": loss}
 
     def mse_loss(self, pred, targ):
