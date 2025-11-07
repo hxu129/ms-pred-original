@@ -33,7 +33,7 @@ universal_args:
   set-layers: [0]
   use-reverse: [false]
 
-  form-dir-name: ['mixed_subformulae']
+  form-dir-name: ['mixed']
   embed-adduct: [true]
   mpnn-type: [GGNN]
   num-fixed-forms: [5000]

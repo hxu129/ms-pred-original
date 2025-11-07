@@ -121,10 +121,25 @@ def train_model():
     # Handle subformulae folder based on dataset
     if dataset_name.lower() in ["msg", "massspecgym"]:
         subformula_folder = data_dir / "subformulae" / subform_stem
+        form_map = {i.stem: Path(i) for i in subformula_folder.glob("*.json")}
+    elif dataset_name.lower() == "mixed_canopus_msg":
+        # For mixed dataset, search in both canopus and msg subformulae directories
+        form_map = {}
+        canopus_subform = Path(data_dir) / "subformulae" / "canopus_subformulae"
+        msg_subform = Path(data_dir) / "subformulae" / "msg_subformulae"
+        
+        # Load from both directories
+        if canopus_subform.exists():
+            for file_path in canopus_subform.glob("*.json"):
+                form_map[file_path.stem] = Path(file_path)
+        if msg_subform.exists():
+            for file_path in msg_subform.glob("*.json"):
+                form_map[file_path.stem] = Path(file_path)
+        
+        logging.info(f"Loaded {len(form_map)} subformulae files from mixed dataset")
     else:
         subformula_folder = Path(data_dir) / "subformulae" / subform_stem
-    
-    form_map = {i.stem: Path(i) for i in subformula_folder.glob("*.json")}
+        form_map = {i.stem: Path(i) for i in subformula_folder.glob("*.json")}
     graph_featurizer = nn_utils.MolDGLGraph(pe_embed_k=kwargs["pe_embed_k"])
     atom_feats = graph_featurizer.atom_feats
     bond_feats = graph_featurizer.bond_feats

@@ -97,43 +97,43 @@ def create_mixed_split():
     return merged_split
 
 
-def copy_subformulae_files():
-    """Copy subformulae files directly instead of using symlinks."""
-    import shutil
+def create_symlinks():
+    """Create symlinks for spec_files and subformulae directories."""
+    logging.info("Creating directory structure with symlinks...")
     
-    logging.info("Copying subformulae files (this may take a few minutes)...")
+    # Create spec_files directory
+    spec_files_dir = OUTPUT_ROOT / "spec_files"
+    spec_files_dir.mkdir(parents=True, exist_ok=True)
     
     # Create subformulae directory
-    subformulae_dir = OUTPUT_ROOT / "subformulae" / "mixed_subformulae"
+    subformulae_dir = OUTPUT_ROOT / "subformulae"
     subformulae_dir.mkdir(parents=True, exist_ok=True)
     
-    # Copy Canopus subformulae
-    canopus_subform_src = CANOPUS_ROOT / "subformulae/subformulae_default"
-    logging.info(f"Copying Canopus subformulae from {canopus_subform_src}...")
-    canopus_files = list(canopus_subform_src.glob("*.json"))
-    for i, src_file in enumerate(canopus_files):
-        if i % 1000 == 0:
-            logging.info(f"  Copied {i}/{len(canopus_files)} Canopus files...")
-        dst_file = subformulae_dir / src_file.name
-        if not dst_file.exists():
-            shutil.copy2(src_file, dst_file)
-    logging.info(f"Copied {len(canopus_files)} Canopus subformulae files")
+    # Create symlink for Canopus spec files
+    canopus_spec_link = spec_files_dir / "canopus_specs"
+    if not canopus_spec_link.exists():
+        os.symlink(CANOPUS_ROOT / "spec_files", canopus_spec_link)
+        logging.info(f"Created symlink: {canopus_spec_link} -> {CANOPUS_ROOT / 'spec_files'}")
     
-    # Copy MSG subformulae
-    msg_subform_src = MSG_ROOT / "subformulae/default_subformulae"
-    logging.info(f"Copying MSG subformulae from {msg_subform_src}...")
-    msg_files = list(msg_subform_src.glob("*.json"))
-    for i, src_file in enumerate(msg_files):
-        if i % 10000 == 0:
-            logging.info(f"  Copied {i}/{len(msg_files)} MSG files...")
-        dst_file = subformulae_dir / src_file.name
-        if not dst_file.exists():
-            shutil.copy2(src_file, dst_file)
-    logging.info(f"Copied {len(msg_files)} MSG subformulae files")
+    # Create symlink for MSG spec files
+    msg_spec_link = spec_files_dir / "msg_specs"
+    if not msg_spec_link.exists():
+        os.symlink(MSG_ROOT / "spec_files", msg_spec_link)
+        logging.info(f"Created symlink: {msg_spec_link} -> {MSG_ROOT / 'spec_files'}")
     
-    total_files = len(list(subformulae_dir.glob("*.json")))
-    logging.info(f"Total subformulae files: {total_files}")
-    logging.info("Subformulae files copied successfully")
+    # Create symlink for Canopus subformulae
+    canopus_subform_link = subformulae_dir / "canopus_subformulae"
+    if not canopus_subform_link.exists():
+        os.symlink(CANOPUS_ROOT / "subformulae/subformulae_default", canopus_subform_link)
+        logging.info(f"Created symlink: {canopus_subform_link} -> {CANOPUS_ROOT / 'subformulae/subformulae_default'}")
+    
+    # Create symlink for MSG subformulae
+    msg_subform_link = subformulae_dir / "msg_subformulae"
+    if not msg_subform_link.exists():
+        os.symlink(MSG_ROOT / "subformulae/default_subformulae", msg_subform_link)
+        logging.info(f"Created symlink: {msg_subform_link} -> {MSG_ROOT / 'subformulae/default_subformulae'}")
+    
+    logging.info("Symlinks created successfully")
 
 
 def main():
@@ -146,12 +146,11 @@ def main():
     # Create merged split
     merged_split = create_mixed_split()
     
-    # Copy subformulae files (instead of symlinks)
-    copy_subformulae_files()
+    # Create symlinks for data files
+    create_symlinks()
     
     logging.info("Mixed dataset creation completed successfully!")
     logging.info(f"Output directory: {OUTPUT_ROOT}")
-    logging.info("Note: Spec files are still in original locations - access them via labels")
     
 
 if __name__ == "__main__":
