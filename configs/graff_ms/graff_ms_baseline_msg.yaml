@@ -1,4 +1,4 @@
-launcher_args: {experiment_name: graff_ms_baseline_canopus_train_public,
+launcher_args: {experiment_name: graff_ms_baseline_msg_train,
   script_name: "src/ms_pred/graff_ms/train.py",
   slurm_script: launcher_scripts/generic_slurm.sh, 
   launch_method: local,
@@ -16,8 +16,8 @@ universal_args:
   batch-size: [64]
   max-epochs: [200]
 
-  dataset-name: [canopus_train_public]
-  split-name: [split_1.tsv] 
+  dataset-name: [msg]
+  split-name: [split.tsv] 
 
   learning-rate: [0.00018]
   lr-decay-rate: [0.92]
@@ -33,24 +33,13 @@ universal_args:
   set-layers: [0]
   use-reverse: [false]
 
-  form-dir-name: ['magma_subform_50_with_raw']
+  form-dir-name: ['default_subformulae']
   embed-adduct: [true]
   mpnn-type: [GGNN]
   num-fixed-forms: [5000]
 
 iterative_args:
-  -  split-name: [split_4.tsv]
-     save-dir: [split_4_rnd1]
+  -  split-name: [split.tsv]
+     save-dir: [msg_rnd1]
      seed: [1]
 
-  # -  split-name: [split_1.tsv]
-  #    save-dir: [split_1_rnd1]
-  #    seed: [1]
-
-  # -  split-name: [split_1.tsv]
-  #    save-dir: [split_1_rnd2]
-  #    seed: [2]
-
-  # -  split-name: [split_1.tsv]
-  #    save-dir: [split_1_rnd3]
-  #    seed: [3]

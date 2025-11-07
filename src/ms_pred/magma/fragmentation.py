@@ -53,6 +53,10 @@ class FragmentEngine(object):
                 self.mol = Chem.MolFromSmiles(self.smiles)
             if self.mol is None:
                 return
+            try:
+                self.inchi = Chem.MolToInchi(self.mol)
+            except Exception as e:
+                print(e)
         elif mol_str_type == "inchi":
             self.inchi = mol_str
             if root_mol is not None:

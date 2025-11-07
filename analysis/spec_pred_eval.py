@@ -31,6 +31,77 @@ def cos_sim_fn(pred_ar, true_spec):
     return cos_sim
 
 
+def rebin_spectrum(binned_ar, original_upper_limit, original_num_bins, 
+                   new_bin_width, new_upper_limit=None, pool_fn="add"):
+    """Rebin a spectrum from fine bins to coarser bins.
+    
+    Args:
+        binned_ar: Array of shape (num_bins,) with binned intensities
+        original_upper_limit: Upper limit of original binning
+        original_num_bins: Number of bins in original binning
+        new_bin_width: Width of new bins (e.g., 1.0 for 1 Da bins)
+        new_upper_limit: Upper limit for new binning (defaults to original_upper_limit)
+        pool_fn: Pooling function ("add" or "max") to merge intensities in same bin
+        
+    Returns:
+        Rebinned array
+    """
+    if new_upper_limit is None:
+        new_upper_limit = original_upper_limit
+    
+    # Calculate m/z value for each original bin
+    original_bin_width = original_upper_limit / original_num_bins
+    original_mz_values = np.arange(len(binned_ar)) * original_bin_width + original_bin_width / 2
+    
+    # Create new bins
+    new_bins = np.arange(0, new_upper_limit + new_bin_width, new_bin_width)
+    new_num_bins = len(new_bins) - 1
+    
+    # Digitize original m/z values to new bins
+    digitized = np.digitize(original_mz_values, new_bins) - 1
+    digitized = np.clip(digitized, 0, new_num_bins - 1)
+    
+    # Aggregate intensities into new bins
+    rebinned = np.zeros(new_num_bins)
+    if pool_fn == "add":
+        for i, intensity in enumerate(binned_ar):
+            if intensity > 0:
+                new_bin_idx = digitized[i]
+                rebinned[new_bin_idx] += intensity
+    elif pool_fn == "max":
+        for i, intensity in enumerate(binned_ar):
+            if intensity > 0:
+                new_bin_idx = digitized[i]
+                rebinned[new_bin_idx] = max(rebinned[new_bin_idx], intensity)
+    else:
+        raise ValueError(f"Unknown pool_fn: {pool_fn}")
+    
+    return rebinned
+
+
+def cos_sim_binned_fn(pred_ar, true_spec, upper_limit, num_bins, 
+                      bin_width=1.0, pool_fn="add"):
+    """Compute cosine similarity with coarser binning.
+    
+    Args:
+        pred_ar: Predicted binned spectrum
+        true_spec: True binned spectrum
+        upper_limit: Upper limit of original binning
+        num_bins: Number of bins in original binning
+        bin_width: Width of bins for rebinning (e.g., 1.0 for 1 Da bins)
+        pool_fn: Pooling function ("add" or "max") for rebinning
+        
+    Returns:
+        Cosine similarity after rebinning
+    """
+    # Rebin both spectra to coarser bins
+    pred_rebinned = rebin_spectrum(pred_ar, upper_limit, num_bins, bin_width, pool_fn=pool_fn)
+    true_rebinned = rebin_spectrum(true_spec, upper_limit, num_bins, bin_width, pool_fn=pool_fn)
+    
+    # Compute cosine similarity on rebinned spectra
+    return cos_sim_fn(pred_rebinned, true_rebinned)
+
+
 def get_args():
     """get_args."""
     parser = argparse.ArgumentParser()
@@ -46,6 +117,20 @@ def get_args():
     )
     parser.add_argument(
         "--max-peaks", type=int, default=20, help="Max num peaks to call"  # 20,
+    )
+    parser.add_argument(
+        "--cos-sim-bin-width",
+        type=float,
+        default=20.0,
+        help="Bin width for cosine similarity calculation (e.g., 1.0 for 1 Da bins). "
+             "If None, uses original fine binning.",
+    )
+    parser.add_argument(
+        "--cos-sim-pool-fn",
+        type=str,
+        default="add",
+        choices=["add", "max"],
+        help="Pooling function for rebinning ('add' or 'max')",
     )
     return parser.parse_args()
 
@@ -122,7 +207,14 @@ def main(args):
         new_pred[pos_bins] = pred_ar[pos_bins]
         pred_ar = new_pred
 
-        cos_sim = cos_sim_fn(pred_ar, true_spec)
+        # Compute cosine similarity with optional rebinning
+        if args.cos_sim_bin_width is not None:
+            cos_sim = cos_sim_binned_fn(
+                pred_ar, true_spec, upper_limit, num_bins,
+                bin_width=args.cos_sim_bin_width, pool_fn=args.cos_sim_pool_fn
+            )
+        else:
+            cos_sim = cos_sim_fn(pred_ar, true_spec)
         mse = np.mean((pred_ar - true_spec) ** 2)
 
         # Compute validity
@@ -147,7 +239,14 @@ def main(args):
         copy_pred, copy_true = np.copy(pred_ar), np.copy(true_spec)
         copy_pred[max_possible_bin] = 0
         copy_true[max_possible_bin] = 0
-        cos_sim_zero_pep = cos_sim_fn(copy_pred, copy_true)
+        # Compute cosine similarity without PEP with optional rebinning
+        if args.cos_sim_bin_width is not None:
+            cos_sim_zero_pep = cos_sim_binned_fn(
+                copy_pred, copy_true, upper_limit, num_bins,
+                bin_width=args.cos_sim_bin_width, pool_fn=args.cos_sim_pool_fn
+            )
+        else:
+            cos_sim_zero_pep = cos_sim_fn(copy_pred, copy_true)
 
         possible_set = set(possible)
         pred_set = set(pos_bins)
