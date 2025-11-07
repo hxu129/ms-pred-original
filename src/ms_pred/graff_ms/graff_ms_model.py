@@ -157,7 +157,7 @@ class GraffGNN(pl.LightningModule):
         # Gates, reverse, forward
         self.output_layer = nn.Linear(self.hidden_size, self.num_fixed_forms)
 
-        self.attn_layer = nn.Linear(self.hidden_size, self.num_fixed_forms)
+        # self.attn_layer = nn.Linear(self.hidden_size, self.num_fixed_forms)
 
     def set_fixed_forms(self, new_fixed):
         new_val = torch.from_numpy(new_fixed)
@@ -216,7 +216,7 @@ class GraffGNN(pl.LightningModule):
         # output = torch.sigmoid(self.output_layer(output))
 
         output = self.output_layer(hidden)
-        attn_weights = self.attn_layer(hidden)
+        # attn_weights = self.attn_layer(hidden)
 
         # Determine which formulae are valid
         device = output.device
