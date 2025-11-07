@@ -2,7 +2,7 @@ launcher_args: {experiment_name: graff_ms_baseline_canopus_train_public,
   script_name: "src/ms_pred/graff_ms/train.py",
   slurm_script: launcher_scripts/generic_slurm.sh, 
   launch_method: local,
-  visible_devices: [0],
+  visible_devices: [2],
 }
 universal_args:
   _slurm_args:
@@ -21,7 +21,7 @@ universal_args:
 
   learning-rate: [0.00018]
   lr-decay-rate: [0.92]
-  bin-size: [10.0] 
+  num-bins: [15000] 
   loss-fn: [cosine]
 
   dropout: [0.3]
@@ -39,18 +39,14 @@ universal_args:
   num-fixed-forms: [5000]
 
 iterative_args:
-  -  split-name: [split_4.tsv]
-     save-dir: [split_4_rnd1]
+  -  split-name: [split_1.tsv]
+     save-dir: [split_1_rnd1]
      seed: [1]
 
-  # -  split-name: [split_1.tsv]
-  #    save-dir: [split_1_rnd1]
-  #    seed: [1]
+  -  split-name: [split_1.tsv]
+     save-dir: [split_1_rnd2]
+     seed: [2]
 
-  # -  split-name: [split_1.tsv]
-  #    save-dir: [split_1_rnd2]
-  #    seed: [2]
-
-  # -  split-name: [split_1.tsv]
-  #    save-dir: [split_1_rnd3]
-  #    seed: [3]
+  -  split-name: [split_1.tsv]
+     save-dir: [split_1_rnd3]
+     seed: [3]

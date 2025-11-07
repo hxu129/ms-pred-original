@@ -17,7 +17,7 @@ universal_args:
   max-epochs: [200]
 
   dataset-name: [canopus_train_public]
-  split-name: [split_4.tsv]
+  split-name: [split_1.tsv]
 
   learning-rate: [0.000996]
   lr-decay-rate: [0.7214]
@@ -39,12 +39,16 @@ universal_args:
 
 
 iterative_args:
-  -  split-name: [split_4.tsv]
-     save-dir: [split_4_rnd1]
+  -  split-name: [split_1.tsv]
+     save-dir: [split_1_rnd1]
      seed: [1]
-  # -  split-name: [split_4.tsv]
-  #    save-dir: [split_4_rnd2]
-  #    seed: [2]
-  # -  split-name: [split_4.tsv]
-  #    save-dir: [split_4_rnd3]
-  #    seed: [3]
+  -  split-name: [split_1.tsv]
+     save-dir: [split_1_rnd2]
+     seed: [2]
+  -  split-name: [split_1.tsv]
+     save-dir: [split_1_rnd3]
+     seed: [3]
+     #-  split-name: [split_2.tsv]
+     #   save-dir: [split_2]
+     #-  split-name: [split_3.tsv]
+     #   save-dir: [split_3]

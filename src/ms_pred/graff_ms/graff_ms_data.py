@@ -71,7 +71,7 @@ def merge_diffs(diff_list):
     return freq_diffs
 
 
-def process_form_file(form_dict_file, upper_limit, num_bins, bin_size=10.0):
+def process_form_file(form_dict_file, upper_limit, num_bins):
     """process_form_file."""
     if form_dict_file is None or not form_dict_file.exists():
         return None
@@ -86,24 +86,8 @@ def process_form_file(form_dict_file, upper_limit, num_bins, bin_size=10.0):
     intens = out_tbl.get("ms2_inten", [])
     formulae = out_tbl.get("formula", [])
 
-    # Get raw spec - handle cases where it's missing
-    raw_spec = out_tbl.get("raw_spec")
-    if raw_spec is not None:
-        raw_spec = np.array(raw_spec)
-    else:
-        # Reconstruct from mz and ms2_inten if raw_spec is missing
-        mz = out_tbl.get("mz", [])
-        ms2_inten = out_tbl.get("ms2_inten", [])
-        if len(mz) > 0 and len(ms2_inten) > 0:
-            raw_spec = np.column_stack([mz, ms2_inten])
-        else:
-            # Fall back to using mono_mass if mz is not available
-            mono_mass = out_tbl.get("mono_mass", [])
-            if len(mono_mass) > 0 and len(ms2_inten) > 0:
-                raw_spec = np.column_stack([mono_mass, ms2_inten])
-            else:
-                # No usable spectrum data
-                return None
+    # Get raw spec
+    raw_spec = np.array(out_tbl.get("raw_spec"))
 
     bins = np.linspace(0, upper_limit, num_bins)
     bin_posts = np.digitize(raw_spec[:, 0], bins)
@@ -134,14 +118,12 @@ class BinnedDataset(Dataset):
         graph_featurizer,
         num_workers=0,
         upper_limit=1500,
-        bin_size=10.0,
         form_dir_name: str = "subform_20",
         use_ray=False,
         **kwargs,
     ):
         self.df = df
         self.num_bins = num_bins
-        self.bin_size = bin_size
         self.file_map = form_map
         self.num_workers = num_workers
         self.upper_limit = upper_limit
@@ -213,7 +195,7 @@ class BinnedDataset(Dataset):
         spec_files = self.form_files
         self.spec_names = self.df_sub["spec"].values
         wrapper_process = lambda x: process_form_file(
-            x, num_bins=num_bins, upper_limit=upper_limit, bin_size=bin_size
+            x, num_bins=num_bins, upper_limit=upper_limit
         )
 
         if self.num_workers == 0:
@@ -247,7 +229,7 @@ class BinnedDataset(Dataset):
             i: self.name_to_forms[i]["root_form"] for i in self.spec_names
         }
 
-        # Note: self.bins is already set at line 148 based on num_bins and upper_limit
+        self.bins = np.linspace(0, 1500, 15000)
         self.adducts = [
             common.ion2onehot_pos[self.name_to_adduct[i]] for i in self.spec_names
         ]

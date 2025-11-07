@@ -6,15 +6,14 @@ import argparse
 num_workers = 32
 python_file = "src/ms_pred/graff_ms/predict.py"
 test_entries = [
-    # {"test_dataset": "nist20", "dataset": "nist20", "split": "split_1", "folder": "split_1_rnd1"},
-    # {"test_dataset": "nist20" , "dataset": "nist20", "split": "split_1", "folder": "split_1_rnd2"},
-    # {"test_dataset": "nist20" , "dataset": "nist20", "split": "split_1", "folder": "split_1_rnd3"},
+    {"test_dataset": "nist20", "dataset": "nist20", "split": "split_1", "folder": "split_1_rnd1"},
+    {"test_dataset": "nist20" , "dataset": "nist20", "split": "split_1", "folder": "split_1_rnd2"},
+    {"test_dataset": "nist20" , "dataset": "nist20", "split": "split_1", "folder": "split_1_rnd3"},
 
-    # {"test_dataset": "nist20", "dataset": "nist20", "split": "scaffold_1", "folder": "scaffold_1"},
-    {"test_dataset": "canopus_train_public", "dataset": "canopus_train_public", "split": "split_4", "folder": "split_4_rnd1"},
-    # {"test_dataset": "canopus_train_public", "dataset": "canopus_train_public", "split": "split_1", "folder": "split_1_rnd1"},
-    # {"test_dataset": "canopus_train_public", "dataset": "canopus_train_public", "split": "split_1", "folder": "split_1_rnd2"},
-    # {"test_dataset": "canopus_train_public", "dataset": "canopus_train_public", "split": "split_1", "folder": "split_1_rnd3"},
+    {"test_dataset": "nist20", "dataset": "nist20", "split": "scaffold_1", "folder": "scaffold_1"},
+    {"test_dataset": "canopus_train_public", "dataset": "canopus_train_public", "split": "split_1", "folder": "split_1_rnd1"},
+    {"test_dataset": "canopus_train_public", "dataset": "canopus_train_public", "split": "split_1", "folder": "split_1_rnd2"},
+    {"test_dataset": "canopus_train_public", "dataset": "canopus_train_public", "split": "split_1", "folder": "split_1_rnd3"},
     #{"test_dataset": "casmi22", "dataset": "canopus_train_public", "split": "all_split", "folder": "split_1_rnd1"},
 ]
 

@@ -43,7 +43,7 @@ def add_graff_ms_train_args(parser):
     parser.add_argument("--lr-decay-rate", default=1.0, action="store", type=float)
     parser.add_argument("--weight-decay", default=0, action="store", type=float)
 
-    parser.add_argument("--bin-size", default=10.0, action="store", type=float)
+    parser.add_argument("--num-bins", default=15000, action="store", type=int)
     parser.add_argument("--layers", default=3, action="store", type=int)
     parser.add_argument("--set-layers", default=2, action="store", type=int)
     parser.add_argument("--pe-embed-k", default=0, action="store", type=int)
@@ -77,8 +77,6 @@ def train_model():
     args = get_args()
     kwargs = args.__dict__
     upper_limit = 1500
-    bin_size = kwargs.get("bin_size", 10.0)
-    num_bins = int(upper_limit / bin_size)
 
     save_dir = kwargs["save_dir"]
     common.setup_logger(save_dir, log_name="graff_train.log", debug=kwargs["debug"])
@@ -93,16 +91,9 @@ def train_model():
     # Get dataset
     # Load smiles dataset and split into 3 subsets
     dataset_name = kwargs["dataset_name"]
-    
-    # Handle MassSpecGym dataset with special path
-    if dataset_name.lower() in ["msg", "massspecgym"]:
-        data_dir = Path("/local3/ericjiang/wgc/huaxu/ms/DiffMS/data/msg")
-        labels = data_dir / "labels.tsv"
-        split_file = data_dir / "split.tsv"
-    else:
-        data_dir = Path("data/spec_datasets") / dataset_name
-        labels = data_dir / kwargs["dataset_labels"]
-        split_file = data_dir / "splits" / kwargs["split_name"]
+    data_dir = Path("data/spec_datasets") / dataset_name
+    labels = data_dir / kwargs["dataset_labels"]
+    split_file = data_dir / "splits" / kwargs["split_name"]
 
     # Get train, val, test inds
     df = pd.read_csv(labels, sep="\t")
@@ -117,40 +108,19 @@ def train_model():
     test_df = df.iloc[test_inds]
 
     subform_stem = kwargs["form_dir_name"]
-    
-    # Handle subformulae folder based on dataset
-    if dataset_name.lower() in ["msg", "massspecgym"]:
-        subformula_folder = data_dir / "subformulae" / subform_stem
-        form_map = {i.stem: Path(i) for i in subformula_folder.glob("*.json")}
-    elif dataset_name.lower() == "mixed_canopus_msg":
-        # For mixed dataset, search in both canopus and msg subformulae directories
-        form_map = {}
-        canopus_subform = Path(data_dir) / "subformulae" / "canopus_subformulae"
-        msg_subform = Path(data_dir) / "subformulae" / "msg_subformulae"
-        
-        # Load from both directories
-        if canopus_subform.exists():
-            for file_path in canopus_subform.glob("*.json"):
-                form_map[file_path.stem] = Path(file_path)
-        if msg_subform.exists():
-            for file_path in msg_subform.glob("*.json"):
-                form_map[file_path.stem] = Path(file_path)
-        
-        logging.info(f"Loaded {len(form_map)} subformulae files from mixed dataset")
-    else:
-        subformula_folder = Path(data_dir) / "subformulae" / subform_stem
-        form_map = {i.stem: Path(i) for i in subformula_folder.glob("*.json")}
+    subformula_folder = Path(data_dir) / "subformulae" / subform_stem
+    form_map = {i.stem: Path(i) for i in subformula_folder.glob("*.json")}
     graph_featurizer = nn_utils.MolDGLGraph(pe_embed_k=kwargs["pe_embed_k"])
     atom_feats = graph_featurizer.atom_feats
     bond_feats = graph_featurizer.bond_feats
 
+    num_bins = kwargs.get("num_bins")
     num_workers = kwargs.get("num_workers", 0)
     train_dataset = graff_ms_data.BinnedDataset(
         train_df,
         form_map=form_map,
         data_dir=data_dir,
         num_bins=num_bins,
-        bin_size=bin_size,
         # num_workers=num_workers,
         upper_limit=upper_limit,
         graph_featurizer=graph_featurizer,
@@ -160,7 +130,6 @@ def train_model():
         form_map=form_map,
         data_dir=data_dir,
         num_bins=num_bins,
-        bin_size=bin_size,
         # num_workers=num_workers,
         upper_limit=upper_limit,
         graph_featurizer=graph_featurizer,
@@ -170,7 +139,6 @@ def train_model():
         form_map=form_map,
         data_dir=data_dir,
         num_bins=num_bins,
-        bin_size=bin_size,
         # num_workers=num_workers,
         upper_limit=upper_limit,
         graph_featurizer=graph_featurizer,
@@ -221,7 +189,6 @@ def train_model():
         learning_rate=kwargs["learning_rate"],
         weight_decay=kwargs["weight_decay"],
         upper_limit=upper_limit,
-        bin_size=bin_size,
         loss_fn=kwargs["loss_fn"],
         atom_feats=atom_feats,
         bond_feats=bond_feats,

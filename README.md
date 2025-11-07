@@ -370,7 +370,7 @@ In addition, we utilize both the NEIMS approach for our binned FFN and GNN encod
 2. **Download the NPLIB1 (canopus_train_public) Dataset**
    This dataset is required for reproducing ICEBERG metrics.
    ```bash
-   cd /local3/ericjiang/wgc/huaxu/ms/ms-pred
+   cd /root/ms/ms-pred
    bash data_scripts/download_gnps.sh
    ```
    The data will be placed in `data/spec_datasets/canopus_train_public/`
