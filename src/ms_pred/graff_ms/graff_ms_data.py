@@ -86,8 +86,24 @@ def process_form_file(form_dict_file, upper_limit, num_bins):
     intens = out_tbl.get("ms2_inten", [])
     formulae = out_tbl.get("formula", [])
 
-    # Get raw spec
-    raw_spec = np.array(out_tbl.get("raw_spec"))
+    # Get raw spec - handle cases where it's missing (e.g., in MSG dataset)
+    raw_spec = out_tbl.get("raw_spec")
+    if raw_spec is not None:
+        raw_spec = np.array(raw_spec)
+    else:
+        # Reconstruct from mz and ms2_inten if raw_spec is missing
+        mz = out_tbl.get("mz", [])
+        ms2_inten = out_tbl.get("ms2_inten", [])
+        if len(mz) > 0 and len(ms2_inten) > 0:
+            raw_spec = np.column_stack([mz, ms2_inten])
+        else:
+            # Fall back to using mono_mass if mz is not available
+            mono_mass = out_tbl.get("mono_mass", [])
+            if len(mono_mass) > 0 and len(ms2_inten) > 0:
+                raw_spec = np.column_stack([mono_mass, ms2_inten])
+            else:
+                # No usable spectrum data
+                return None
 
     bins = np.linspace(0, upper_limit, num_bins)
     bin_posts = np.digitize(raw_spec[:, 0], bins)
