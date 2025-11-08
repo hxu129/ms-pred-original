@@ -1,8 +1,9 @@
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import logging
 import json
 import numpy as np
 from tqdm import tqdm
+import gc
 
 import torch
 from rdkit import Chem
@@ -10,6 +11,37 @@ from torch.utils.data.dataset import Dataset
 import dgl
 
 import ms_pred.common as common
+
+
+class LRUCache:
+    """Simple LRU cache with size limit."""
+    def __init__(self, max_size=1000):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+    
+    def get(self, key, default=None):
+        if key not in self.cache:
+            return default
+        # Move to end to mark as recently used
+        self.cache.move_to_end(key)
+        return self.cache[key]
+    
+    def put(self, key, value):
+        if key in self.cache:
+            # Move to end
+            self.cache.move_to_end(key)
+        else:
+            self.cache[key] = value
+            # Remove oldest if cache is full
+            if len(self.cache) > self.max_size:
+                self.cache.popitem(last=False)
+    
+    def __contains__(self, key):
+        return key in self.cache
+    
+    def clear(self):
+        self.cache.clear()
+        gc.collect()
 
 
 def array_to_string(array):
@@ -136,6 +168,9 @@ class BinnedDataset(Dataset):
         upper_limit=1500,
         form_dir_name: str = "subform_20",
         use_ray=False,
+        lazy_loading=False,
+        cache_size=500,
+        validate_on_init=True,
         **kwargs,
     ):
         self.df = df
@@ -145,6 +180,8 @@ class BinnedDataset(Dataset):
         self.upper_limit = upper_limit
         self.bins = np.linspace(0, self.upper_limit, self.num_bins)
         self.name_to_adduct = dict(self.df[["spec", "ionization"]].values)
+        self.lazy_loading = lazy_loading
+        self.cache_size = cache_size
 
         valid_specs = [i in self.file_map for i in self.df["spec"].values]
         self.df_sub = self.df[valid_specs]
@@ -165,107 +202,260 @@ class BinnedDataset(Dataset):
         self.num_atom_feats = self.graph_featurizer.num_atom_feats
         self.num_bond_feats = self.graph_featurizer.num_bond_feats
 
-        if self.num_workers == 0:
-            self.mols = [Chem.MolFromSmiles(i) for i in self.smiles]
-            self.weights = [common.ExactMolWt(i) for i in self.mols]
-            self.mol_graphs = [
-                self.graph_featurizer.get_dgl_graph(i) for i in self.mols
+        if self.lazy_loading:
+            # Lazy loading: only store SMILES and file paths, load on demand
+            logging.info(f"Using lazy loading mode - data will be loaded on demand")
+            logging.info(f"Cache size: {cache_size} items")
+            logging.info(f"Validation on init: {validate_on_init}")
+            logging.info(f"{len(self.df_sub)} of {len(self.df)} spec have form dicts.")
+            
+            self.form_files = [
+                self.name_to_dict[i]["formula_file"] for i in self.spec_names
             ]
+            
+            # Store SMILES mapping for lazy loading
+            self.name_to_smiles = dict(zip(self.spec_names, self.smiles))
+            
+            # Use LRU cache for loaded data to limit memory usage
+            self._graph_cache = LRUCache(max_size=cache_size)
+            self._spec_cache = LRUCache(max_size=cache_size)
+            
+            # Validate files
+            valid_indices = []
+            if validate_on_init:
+                # Full validation with memory-efficient batching
+                logging.info("Validating all spectrum files in batches (memory-efficient)...")
+                validation_batch_size = 100  # Process 100 files at a time
+                num_batches = (len(self.spec_names) + validation_batch_size - 1) // validation_batch_size
+                
+                for batch_idx in tqdm(range(num_batches), desc="Validating batches"):
+                    start_idx = batch_idx * validation_batch_size
+                    end_idx = min(start_idx + validation_batch_size, len(self.spec_names))
+                    
+                    for idx in range(start_idx, end_idx):
+                        spec_name = self.spec_names[idx]
+                        form_file = self.form_files[idx]
+                        if form_file is not None and form_file.exists():
+                            try:
+                                spec_dict = process_form_file(form_file, num_bins=num_bins, upper_limit=upper_limit)
+                                if spec_dict is not None and len(spec_dict.get("formulae", [])) > 0:
+                                    valid_indices.append(idx)
+                                # Explicitly delete to help GC
+                                del spec_dict
+                            except Exception as e:
+                                logging.warning(f"Failed to validate {spec_name}: {e}")
+                        else:
+                            logging.warning(f"File not found for {spec_name}: {form_file}")
+                    
+                    # Force garbage collection every 5 batches to keep memory low
+                    if batch_idx % 5 == 0:
+                        gc.collect()
+                
+                # Final GC after validation
+                gc.collect()
+                logging.info(f"Validation complete. Memory cleaned up.")
+            else:
+                # Quick validation: only check file existence
+                logging.info("Quick validation: checking file existence only")
+                for idx, spec_name in enumerate(self.spec_names):
+                    form_file = self.form_files[idx]
+                    if form_file is not None and form_file.exists():
+                        valid_indices.append(idx)
+                    else:
+                        logging.warning(f"File not found for {spec_name}: {form_file}")
+            
+            logging.info(f"Validated {len(valid_indices)} of {len(self.spec_names)} spectra")
+            self.spec_names = self.spec_names[valid_indices]
+            self.smiles = self.smiles[valid_indices]
+            self.form_files = [self.form_files[i] for i in valid_indices]
+            self.name_to_smiles = {self.spec_names[i]: self.smiles[i] for i in range(len(self.spec_names))}
+            
         else:
-            mol_from_smi = lambda x: Chem.MolFromSmiles(x)
-            self.mols = common.chunked_parallel(
-                self.smiles,
-                mol_from_smi,
-                chunks=100,
-                max_cpu=self.num_workers,
-                timeout=600,
-                max_retries=3,
-                use_ray=use_ray,
-            )
-            self.weights = common.chunked_parallel(
-                self.mols,
-                lambda x: common.ExactMolWt(x),
-                chunks=100,
-                max_cpu=self.num_workers,
-                timeout=600,
-                max_retries=3,
-                use_ray=use_ray,
-            )
-            self.mol_graphs = common.chunked_parallel(
-                self.mols,
-                self.graph_featurizer.get_dgl_graph,
-                chunks=100,
-                max_cpu=self.num_workers,
-                timeout=4000,
-                max_retries=3,
-                use_ray=use_ray,
-            )
+            # Eager loading: load all data into memory (original behavior)
+            if self.num_workers == 0:
+                self.mols = [Chem.MolFromSmiles(i) for i in self.smiles]
+                self.weights = [common.ExactMolWt(i) for i in self.mols]
+                self.mol_graphs = [
+                    self.graph_featurizer.get_dgl_graph(i) for i in self.mols
+                ]
+            else:
+                mol_from_smi = lambda x: Chem.MolFromSmiles(x)
+                self.mols = common.chunked_parallel(
+                    self.smiles,
+                    mol_from_smi,
+                    chunks=100,
+                    max_cpu=self.num_workers,
+                    timeout=600,
+                    max_retries=3,
+                    use_ray=use_ray,
+                )
+                self.weights = common.chunked_parallel(
+                    self.mols,
+                    lambda x: common.ExactMolWt(x),
+                    chunks=100,
+                    max_cpu=self.num_workers,
+                    timeout=600,
+                    max_retries=3,
+                    use_ray=use_ray,
+                )
+                self.mol_graphs = common.chunked_parallel(
+                    self.mols,
+                    self.graph_featurizer.get_dgl_graph,
+                    chunks=100,
+                    max_cpu=self.num_workers,
+                    timeout=4000,
+                    max_retries=3,
+                    use_ray=use_ray,
+                )
 
-        logging.info(f"{len(self.df_sub)} of {len(self.df)} spec have form dicts.")
-        self.form_files = [
-            self.name_to_dict[i]["formula_file"] for i in self.spec_names
-        ]
-        self.weights = np.array(self.weights)
+            logging.info(f"{len(self.df_sub)} of {len(self.df)} spec have form dicts.")
+            self.form_files = [
+                self.name_to_dict[i]["formula_file"] for i in self.spec_names
+            ]
+            self.weights = np.array(self.weights)
 
-        # Read in all specs
-        spec_files = self.form_files
-        self.spec_names = self.df_sub["spec"].values
-        wrapper_process = lambda x: process_form_file(
-            x, num_bins=num_bins, upper_limit=upper_limit
-        )
-
-        logging.info(f"Loading {len(spec_files)} spectrum files with {self.num_workers} workers...")
-        if self.num_workers == 0:
-            spec_outputs = [wrapper_process(i) for i in tqdm(spec_files, desc="Loading spectra")]
-        else:
-            # Use progress bar for better visibility
-            spec_outputs = common.chunked_parallel(
-                spec_files,
-                wrapper_process,
-                chunks=min(200, len(spec_files) // max(1, self.num_workers * 10)),  # More chunks for better progress tracking
-                max_cpu=self.num_workers,
-                timeout=4000,
-                max_retries=3,
-                use_ray=use_ray,
-                desc=f"Loading {len(spec_files)} spectra",
+            # Read in all specs
+            spec_files = self.form_files
+            self.spec_names = self.df_sub["spec"].values
+            wrapper_process = lambda x: process_form_file(
+                x, num_bins=num_bins, upper_limit=upper_limit
             )
 
-        self.name_to_forms = dict(zip(self.spec_names, spec_outputs))
-        self.name_to_smiles = dict(zip(self.spec_names, self.smiles))
-        self.name_to_mols = dict(zip(self.spec_names, self.mol_graphs))
+            logging.info(f"Loading {len(spec_files)} spectrum files with {self.num_workers} workers...")
+            if self.num_workers == 0:
+                spec_outputs = [wrapper_process(i) for i in tqdm(spec_files, desc="Loading spectra")]
+            else:
+                # Use progress bar for better visibility
+                spec_outputs = common.chunked_parallel(
+                    spec_files,
+                    wrapper_process,
+                    chunks=min(200, len(spec_files) // max(1, self.num_workers * 10)),  # More chunks for better progress tracking
+                    max_cpu=self.num_workers,
+                    timeout=4000,
+                    max_retries=3,
+                    use_ray=use_ray,
+                    desc=f"Loading {len(spec_files)} spectra",
+                )
 
-        len_spec_names = len(self.spec_names)
-        self.spec_names = [
-            i
-            for i in self.spec_names
-            if self.name_to_forms.get(i) is not None
-            and len(self.name_to_forms.get(i)["formulae"]) > 0
-        ]
-        post_len_spec_names = len(self.spec_names)
-        logging.info(f"{post_len_spec_names} of {len_spec_names} have nonzero intens.")
-        self.spec_names = np.array(self.spec_names)
-        self.name_to_root_form = {
-            i: self.name_to_forms[i]["root_form"] for i in self.spec_names
-        }
+            self.name_to_forms = dict(zip(self.spec_names, spec_outputs))
+            self.name_to_smiles = dict(zip(self.spec_names, self.smiles))
+            self.name_to_mols = dict(zip(self.spec_names, self.mol_graphs))
+
+            len_spec_names = len(self.spec_names)
+            self.spec_names = [
+                i
+                for i in self.spec_names
+                if self.name_to_forms.get(i) is not None
+                and len(self.name_to_forms.get(i)["formulae"]) > 0
+            ]
+            post_len_spec_names = len(self.spec_names)
+            logging.info(f"{post_len_spec_names} of {len_spec_names} have nonzero intens.")
+            self.spec_names = np.array(self.spec_names)
+            self.name_to_root_form = {
+                i: self.name_to_forms[i]["root_form"] for i in self.spec_names
+            }
 
         self.bins = np.linspace(0, 1500, 15000)
+        self.spec_names = np.array(self.spec_names)
         self.adducts = [
             common.ion2onehot_pos[self.name_to_adduct[i]] for i in self.spec_names
         ]
 
-    def get_top_forms(self):
-        all_freqs = []
-        for i in self.spec_names:
-            entry = self.name_to_forms[i]
-            extracted = extract_single_dict(entry)
-            all_freqs.append(extracted)
-        freq_diff = merge_diffs(all_freqs)
+    def _load_mol_and_graph(self, smiles):
+        """Lazily load molecule and graph for a given SMILES with LRU caching."""
+        # Check cache first
+        cached = self._graph_cache.get(smiles)
+        if cached is not None:
+            return cached
+        
+        # Load and cache
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise ValueError(f"Failed to parse SMILES: {smiles}")
+        
+        graph = self.graph_featurizer.get_dgl_graph(mol)
+        self._graph_cache.put(smiles, graph)
+        return graph
+    
+    def _load_spectrum(self, form_file):
+        """Lazily load spectrum data from file with LRU caching."""
+        form_file_str = str(form_file)
+        
+        # Check cache first
+        cached = self._spec_cache.get(form_file_str)
+        if cached is not None:
+            return cached
+        
+        # Load and cache
+        spec_dict = process_form_file(form_file, num_bins=self.num_bins, upper_limit=self.upper_limit)
+        if spec_dict is None:
+            raise ValueError(f"Failed to load spectrum from: {form_file}")
+        
+        self._spec_cache.put(form_file_str, spec_dict)
+        return spec_dict
+
+    def get_top_forms(self, batch_size=100):
+        """
+        Compute top forms with memory-efficient batching for lazy loading.
+        
+        Args:
+            batch_size: Number of spectra to process at once before merging (default: 100)
+        """
+        if self.lazy_loading:
+            # For lazy loading, process in batches to limit memory usage
+            logging.info("Computing top forms with lazy loading in batches...")
+            freq_diff = defaultdict(lambda: 0)
+            
+            # Process in batches
+            num_batches = (len(self.spec_names) + batch_size - 1) // batch_size
+            for batch_idx in tqdm(range(num_batches), desc="Processing batches for top forms"):
+                start_idx = batch_idx * batch_size
+                end_idx = min(start_idx + batch_size, len(self.spec_names))
+                
+                batch_freqs = []
+                for idx in range(start_idx, end_idx):
+                    spec_name = self.spec_names[idx]
+                    form_file = self.form_files[idx]
+                    try:
+                        # Load directly without caching for this operation
+                        entry = process_form_file(form_file, num_bins=self.num_bins, upper_limit=self.upper_limit)
+                        if entry is not None:
+                            extracted = extract_single_dict(entry)
+                            batch_freqs.append(extracted)
+                    except Exception as e:
+                        logging.warning(f"Failed to load {spec_name}: {e}")
+                
+                # Merge batch and update global frequencies
+                batch_merged = merge_diffs(batch_freqs)
+                for k, v in batch_merged.items():
+                    freq_diff[k] += v
+                
+                # Clean up batch data
+                del batch_freqs
+                del batch_merged
+                if batch_idx % 10 == 0:  # Periodic garbage collection
+                    gc.collect()
+            
+        else:
+            # Original behavior for eager loading
+            all_freqs = []
+            for i in self.spec_names:
+                entry = self.name_to_forms[i]
+                extracted = extract_single_dict(entry)
+                all_freqs.append(extracted)
+            freq_diff = merge_diffs(all_freqs)
+        
+        # Convert to arrays and sort
         forms, cts = zip(*list(freq_diff.items()))
         cts = np.array(cts)
         forms = np.array([string_to_array(i) for i in forms])
         new_order = np.argsort(cts)[::-1]
         cts = cts[new_order]
         forms = forms[new_order]
+        
+        # Final cleanup
+        gc.collect()
+        
         return {"forms": forms, "cts": cts}
 
     def __len__(self):
@@ -273,13 +463,20 @@ class BinnedDataset(Dataset):
 
     def __getitem__(self, idx: int):
         name = self.spec_names[idx]
-
         smiles = self.name_to_smiles[name]
-        graph = self.name_to_mols[name]
-        spec_form_obj = self.name_to_forms[name]
+        adduct = self.adducts[idx]
+
+        if self.lazy_loading:
+            # Lazy loading: load on demand
+            graph = self._load_mol_and_graph(smiles)
+            form_file = self.form_files[idx]
+            spec_form_obj = self._load_spectrum(form_file)
+        else:
+            # Eager loading: retrieve from memory
+            graph = self.name_to_mols[name]
+            spec_form_obj = self.name_to_forms[name]
 
         ar = spec_form_obj["raw_binned"]
-        adduct = self.adducts[idx]
 
         outdict = {
             "name": name,

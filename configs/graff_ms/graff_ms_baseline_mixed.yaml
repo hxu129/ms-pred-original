@@ -11,17 +11,17 @@ universal_args:
   debug: [false]
   gpu: [true]
   num-gpus: [2]
-  strategy: [ddp]
+  strategy: [ddp_find_unused_parameters_true]  # Required: set_layers=0 causes unused set_transformer params
 
   seed: [1]
-  num-workers: [24]  # 减少到8，避免OOM (2 GPU × 8 = 16 workers total)
-  batch-size: [128]
-  max-epochs: [300]
+  num-workers: [16]  # 减少到8，避免OOM (2 GPU × 8 = 16 workers total)
+  batch-size: [32]
+  max-epochs: [400]
 
   dataset-name: [mixed_canopus_msg]
   split-name: [split_1.tsv] 
 
-  learning-rate: [0.00036]
+  learning-rate: [0.00018]
   lr-decay-rate: [0.92]
   num-bins: [15000] 
   loss-fn: [cosine]
@@ -29,7 +29,7 @@ universal_args:
   dropout: [0.3]
   hidden-size: [512]
   layers: [6]
-  weight-decay: [5e-4]
+  weight-decay: [1e-6]
   pe-embed-k: [11]
   pool-op: [avg]
   set-layers: [0]
@@ -39,6 +39,9 @@ universal_args:
   embed-adduct: [true]
   mpnn-type: [GGNN]
   num-fixed-forms: [5000]
+  lazy-loading: [true]
+  cache-size: [512]
+  validate-on-init: [true]
 
 iterative_args:
   -  split-name: [split_1.tsv]

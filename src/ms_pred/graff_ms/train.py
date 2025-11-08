@@ -69,6 +69,15 @@ def add_graff_ms_train_args(parser):
     )
     parser.add_argument("--embed-adduct", default=False, action="store_true")
     parser.add_argument("--num-fixed-forms", default=10000, action="store", type=int)
+    parser.add_argument("--lazy-loading", default=False, action="store_true",
+                        help="Use lazy data loading to reduce memory usage")
+    parser.add_argument("--cache-size", default=500, action="store", type=int,
+                        help="LRU cache size for lazy loading (default: 500)")
+    parser.add_argument("--validate-on-init", default=True, action="store_true",
+                        help="Validate all files during initialization (default: True)")
+    parser.add_argument("--no-validate-on-init", dest="validate_on_init", action="store_false",
+                        help="Skip validation during initialization (faster but riskier)")
+    parser.add_argument("--use-reverse", default=False, action="store_true")
     return parser
 
 
@@ -121,32 +130,49 @@ def train_model():
 
     num_bins = kwargs.get("num_bins")
     num_workers = kwargs.get("num_workers", 0)
+    lazy_loading = kwargs.get("lazy_loading", False)
+    cache_size = kwargs.get("cache_size", 500)
+    validate_on_init = kwargs.get("validate_on_init", True)
+    
+    if lazy_loading:
+        logging.info(f"Using lazy data loading mode with cache size: {cache_size}")
+        logging.info(f"Validate on init: {validate_on_init}")
+    
     train_dataset = graff_ms_data.BinnedDataset(
         train_df,
         form_map=form_map,
         data_dir=data_dir,
         num_bins=num_bins,
-        # num_workers=num_workers,
+        num_workers=num_workers,
         upper_limit=upper_limit,
         graph_featurizer=graph_featurizer,
+        lazy_loading=lazy_loading,
+        cache_size=cache_size,
+        validate_on_init=validate_on_init,
     )
     val_dataset = graff_ms_data.BinnedDataset(
         val_df,
         form_map=form_map,
         data_dir=data_dir,
         num_bins=num_bins,
-        # num_workers=num_workers,
+        num_workers=num_workers,
         upper_limit=upper_limit,
         graph_featurizer=graph_featurizer,
+        lazy_loading=lazy_loading,
+        cache_size=cache_size,
+        validate_on_init=validate_on_init,
     )
     test_dataset = graff_ms_data.BinnedDataset(
         test_df,
         form_map=form_map,
         data_dir=data_dir,
         num_bins=num_bins,
-        # num_workers=num_workers,
+        num_workers=num_workers,
         upper_limit=upper_limit,
         graph_featurizer=graph_featurizer,
+        lazy_loading=lazy_loading,
+        cache_size=cache_size,
+        validate_on_init=validate_on_init,
     )
     new_entry = train_dataset[0]
 
