@@ -145,12 +145,12 @@ class GraffGNN(pl.LightningModule):
         if loss_fn == "mse":
             self.loss_fn = self.mse_loss
             self.num_outputs = 1
-            self.output_activations = [nn.ReLU()]
+            # self.output_activations = [nn.ReLU()]
         elif loss_fn == "cosine":
             self.loss_fn = self.cos_loss
             self.cos_fn = nn.CosineSimilarity()
             self.num_outputs = 1
-            self.output_activations = [nn.Sigmoid()]
+            # self.output_activations = [nn.Sigmoid()]
         else:
             raise NotImplementedError()
 
@@ -215,11 +215,8 @@ class GraffGNN(pl.LightningModule):
         # Predict intens at all formulae
         # output = torch.sigmoid(self.output_layer(output))
 
-        output = self.output_layer(hidden)
-        # attn_weights = self.attn_layer(hidden)
-
         # Determine which formulae are valid
-        device = output.device
+        device = hidden.device
         batch_size, form_dim = full_forms.shape
 
         is_loss_bool = self.is_loss.bool()
@@ -284,9 +281,6 @@ class GraffGNN(pl.LightningModule):
         return self._common_step(batch, name="test")
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(
-            self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
-        )
         optimizer = torch.optim.Adam(
             self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
         )
